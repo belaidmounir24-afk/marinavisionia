@@ -1,0 +1,65 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-abyss: #0d141d;
+  --color-abyss-deep: #080f18;
+  --color-panel: #151c25;
+  --color-panel-elevated: #19202a;
+  --color-panel-high: #232a34;
+  --color-panel-highest: #2e353f;
+  --color-border-subtle: #3a494b;
+  --color-sonar-cyan: #00f2fe;
+  --color-sonar-teal: #40dcca;
+  --color-sonar-amber: #ffba38;
+  --color-sonar-coral: #ffb4ab;
+  --color-text-primary: #e0fdff;
+  --color-text-base: #dce3f0;
+  --color-text-muted: #9eb2b8;
+}
+
+@layer base {
+  html,
+  body {
+    background-color: #0d141d;
+    color: #dce3f0;
+    font-family: var(--font-sans);
+    overscroll-behavior: none;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  #print-report-area,
+  #print-report-area * {
+    visibility: visible !important;
+  }
+  #print-report-area {
+    display: block !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    background: #ffffff !important;
+    color: #0d141d !important;
+    padding: 24px !important;
+  }
+}
