@@ -6,39 +6,68 @@ import {
   Copy,
   Cpu,
   CreditCard,
+  Crown,
   Database,
   FileCode2,
   FileSpreadsheet,
+  FileText,
+  Globe,
+  KeyRound,
   LayoutGrid,
   LocateFixed,
   Lock,
+  Mail,
+  MapPin,
+  MapPinPlus,
+  Phone,
   Play,
   Power,
+  QrCode,
   Radar,
   Radio,
   RefreshCw,
   Satellite,
   Save,
+  Search,
+  Share2,
   ShieldAlert,
   ShieldCheck,
   Sliders,
   Smartphone,
+  Sparkles,
   Terminal,
   Timer,
   Trash2,
   Unlock,
+  UserCheck,
 } from 'lucide-react';
 import {
   AndroidLocationPermission,
+  LocalRagIndex,
+  ManualLicenseRecord,
   MarineFeatureKey,
   McpConfig,
   McpLogEntry,
   NmeaBaudRate,
+  PointInteretMed,
+  PwaDeployConfig,
   SubscriptionTier,
   TelemetryState,
   TrackPoint,
 } from '../types/marine';
-import { getTierLabel, hasAccess, isWeeklyPricingAnomalous } from '../utils/accessControl';
+import {
+  getTierLabel,
+  hasAccess,
+  PROJECT_CONTACT,
+  TURNKEY_LICENSE_PRESETS,
+} from '../utils/accessControl';
+import {
+  calculateGpsDistance,
+  queryLocalRagIndex,
+  VESSEL_LAT,
+  VESSEL_LON,
+} from '../utils/navigation';
+import { PwaDeployPanel } from './PwaDeployPanel';
 
 interface AgentMcpViewProps {
   config: McpConfig;
@@ -48,13 +77,36 @@ interface AgentMcpViewProps {
   logs: McpLogEntry[];
   cacheSizeMb: number;
   autoLogCountdownSec: number;
+  manualLicense: ManualLicenseRecord;
+  pointsInteret: PointInteretMed[];
+  ragIndex: LocalRagIndex;
+  isAdmin: boolean;
+  onToggleAdminMode: (nextAdmin: boolean) => void;
+  onShareApp: (guestMode?: boolean) => void;
+  onOpenQrShare: (guestMode?: boolean) => void;
+  onDownloadManifest: () => void;
   onExecuteCommand: (cmd: string) => void;
   onExtractAndSaveJson: () => void;
   onExportXlsx: () => void;
   onExportSetupMarineGpsJson: () => void;
   onExportMarineToolsJson: () => void;
+  onExportMedPoisJson: () => void;
+  onExportLieuxNavJson: () => void;
+  onExportPdf: () => void;
+  onIndexRagDatabase: () => void;
+  onOpenImplScriptModal: (lang: 'javascript' | 'python') => void;
+  onOpenNavView: () => void;
+  onOpenManualPoint: () => void;
+  onCapturePoiFromGnrmc: () => void;
+  onTogglePoiAiAlert: (poiId: string) => void;
+  onActivateLicenseCode: (code: string, provider?: 'Manuel' | 'Stripe' | 'PayPal') => void;
+  onRevokeLicense: () => void;
+  onPurchaseTurnkey: (provider: 'Stripe' | 'PayPal', tier: Exclude<SubscriptionTier, 'free'>) => void;
+  onFocusBento: () => void;
   onFocusGpsWidget: () => void;
   onFocusCompassGps: () => void;
+  onOpenPasserelle: () => void;
+  onSaveCurrentPosition: () => void;
   onOpenSyncScript: () => void;
   onReloadConfig: () => void;
   onTestInference: () => void;
@@ -64,6 +116,11 @@ interface AgentMcpViewProps {
   onChangeBiomassThreshold: (pct: number) => void;
   onUpdateGeofence: (patch: Partial<McpConfig['geofence']>) => void;
   onUpdateGnssNmea: (patch: Partial<McpConfig['gnss_nmea']>) => void;
+  onUpdatePwaDeploy: (patch: Partial<PwaDeployConfig>) => void;
+  onSyncNetlify: () => void;
+  onExportNetlifyToml: () => void;
+  onNotify: (msg: string) => void;
+  onLog: (tag: string, source: string, detail: string) => void;
   onSelectPlan: (tier: SubscriptionTier) => void;
   onReviseWeeklyPrice: (priceEur: number) => void;
   onToggleFeatureTier: (feature: MarineFeatureKey) => void;
@@ -76,12 +133,14 @@ interface AgentMcpViewProps {
 }
 
 const PRESET_COMMANDS = [
-  '/check_access --feature "ais_stream"',
-  '/set_plan --tier "yearly"',
-  '/revise_pricing --weekly "4.99"',
-  '/system_hook --enable_sensor "GNSS_L5"',
-  '/set_auto_log --format "xlsx" --interval "60s" --target "donnees_visionia.xlsx"',
-  '/gnss_reset --force_on --update_interval 1000',
+  '/set_mode --guest',
+  '/share_app',
+  '/gen_qrcode',
+  '/memoire --note "Validation Marina Visionnaire · Mode Invité & PWA"',
+  '/pdf',
+  '/excel',
+  '/set_zone --zone "skikda"',
+  '/add_point --name "Cap de Fer" --lat 37.0815 --lon 7.1720',
 ];
 
 export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
@@ -92,13 +151,36 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
   logs,
   cacheSizeMb,
   autoLogCountdownSec,
+  manualLicense,
+  pointsInteret,
+  ragIndex,
+  isAdmin,
+  onToggleAdminMode,
+  onShareApp,
+  onOpenQrShare,
+  onDownloadManifest,
   onExecuteCommand,
   onExtractAndSaveJson,
   onExportXlsx,
   onExportSetupMarineGpsJson,
   onExportMarineToolsJson,
+  onExportMedPoisJson,
+  onExportLieuxNavJson,
+  onExportPdf,
+  onIndexRagDatabase,
+  onOpenImplScriptModal,
+  onOpenNavView,
+  onOpenManualPoint,
+  onCapturePoiFromGnrmc,
+  onTogglePoiAiAlert,
+  onActivateLicenseCode,
+  onRevokeLicense,
+  onPurchaseTurnkey,
+  onFocusBento,
   onFocusGpsWidget,
   onFocusCompassGps,
+  onOpenPasserelle,
+  onSaveCurrentPosition,
   onOpenSyncScript,
   onReloadConfig,
   onTestInference,
@@ -106,8 +188,12 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
   onChangeBiomassThreshold,
   onUpdateGeofence,
   onUpdateGnssNmea,
+  onUpdatePwaDeploy,
+  onSyncNetlify,
+  onExportNetlifyToml,
+  onNotify,
+  onLog,
   onSelectPlan,
-  onReviseWeeklyPrice,
   onToggleFeatureTier,
   onTestHasAccess,
   onToggleConstellation,
@@ -116,12 +202,29 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
   onUpdateCache,
   onCopyJson,
 }) => {
-  const [cmdInput, setCmdInput] = useState('/check_access --feature "ais_stream"');
-  const [actionGuideTab, setActionGuideTab] = useState<'plans' | 'gps-l5' | 'gnss' | 'skikda'>(
-    'plans'
+  const [cmdInput, setCmdInput] = useState(
+    '/set_mode --guest'
   );
+  const [actionGuideTab, setActionGuideTab] = useState<
+    | 'distribution'
+    | 'synthese'
+    | 'mediterranee-db'
+    | 'lieux-nav'
+    | 'freemium'
+    | 'gps-pin'
+    | 'ux'
+    | 'pwa'
+    | 'plans'
+    | 'gps-l5'
+    | 'gnss'
+    | 'skikda'
+  >('distribution');
+  const [licenseInput, setLicenseInput] = useState(manualLicense.code || 'MV-1Y-2026');
   const [nmeaPortInput, setNmeaPortInput] = useState(config.gnss_nmea.nmea_port);
   const [nmeaBaudInput, setNmeaBaudInput] = useState<NmeaBaudRate>(config.gnss_nmea.baudrate);
+  const [ragQuery, setRagQuery] = useState('');
+  const [refLatInput, setRefLatInput] = useState(VESSEL_LAT.toFixed(4));
+  const [refLonInput, setRefLonInput] = useState(VESSEL_LON.toFixed(4));
 
   const sensitivityPct = Math.round(config.mcp_agent.biomass_threshold * 100);
   const cachePct = Math.min(100, Math.round((cacheSizeMb / 296) * 100));
@@ -130,8 +233,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
   const gnss = config.gnss_nmea;
   const tracker = config.MARINE_GPS_TRACKER;
   const tools = config.marine_tools_config;
-  const weeklyPlan = tools.plans.find((p) => p.id === 'weekly');
-  const pricingAnomaly = isWeeklyPricingAnomalous(tools.plans);
+  const contact = config.project_contact || PROJECT_CONTACT;
 
   return (
     <div className="space-y-6">
@@ -152,7 +254,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-6">
+        <div className="flex flex-wrap items-center gap-4 sm:gap-6">
           <div className="text-right">
             <div className="text-[11px] font-mono text-[#9eb2b8]">Auto-Log Excel</div>
             <div
@@ -247,6 +349,94 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                 <div className="flex flex-wrap items-center gap-1 bg-[#080f18] p-0.5 rounded-lg border border-[#3a494b]/50">
                   <button
                     type="button"
+                    onClick={() => setActionGuideTab('distribution')}
+                    className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                      actionGuideTab === 'distribution'
+                        ? 'bg-[#00f2fe] text-[#002022] font-semibold'
+                        : 'text-[#9eb2b8] hover:text-[#e0fdff]'
+                    }`}
+                  >
+                    Mode Invité &amp; PWA
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActionGuideTab('synthese')}
+                    className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                      actionGuideTab === 'synthese'
+                        ? 'bg-[#00f2fe] text-[#002022] font-semibold'
+                        : 'text-[#9eb2b8] hover:text-[#e0fdff]'
+                    }`}
+                  >
+                    Synthèse Projet
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActionGuideTab('mediterranee-db')}
+                    className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                      actionGuideTab === 'mediterranee-db'
+                        ? 'bg-[#00f2fe] text-[#002022] font-semibold'
+                        : 'text-[#9eb2b8] hover:text-[#e0fdff]'
+                    }`}
+                  >
+                    Méditerranée RAG
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActionGuideTab('lieux-nav')}
+                    className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                      actionGuideTab === 'lieux-nav'
+                        ? 'bg-[#00f2fe] text-[#002022] font-semibold'
+                        : 'text-[#9eb2b8] hover:text-[#e0fdff]'
+                    }`}
+                  >
+                    Lieux &amp; Nav
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActionGuideTab('freemium')}
+                    className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                      actionGuideTab === 'freemium'
+                        ? 'bg-[#00f2fe] text-[#002022] font-semibold'
+                        : 'text-[#9eb2b8] hover:text-[#e0fdff]'
+                    }`}
+                  >
+                    Freemium &amp; POI
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActionGuideTab('gps-pin')}
+                    className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                      actionGuideTab === 'gps-pin'
+                        ? 'bg-[#00f2fe] text-[#002022] font-semibold'
+                        : 'text-[#9eb2b8] hover:text-[#e0fdff]'
+                    }`}
+                  >
+                    Capture GPS
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActionGuideTab('ux')}
+                    className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                      actionGuideTab === 'ux'
+                        ? 'bg-[#00f2fe] text-[#002022] font-semibold'
+                        : 'text-[#9eb2b8] hover:text-[#e0fdff]'
+                    }`}
+                  >
+                    UI/UX Mer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActionGuideTab('pwa')}
+                    className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                      actionGuideTab === 'pwa'
+                        ? 'bg-[#00f2fe] text-[#002022] font-semibold'
+                        : 'text-[#9eb2b8] hover:text-[#e0fdff]'
+                    }`}
+                  >
+                    PWA &amp; CI/CD
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setActionGuideTab('plans')}
                     className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
                       actionGuideTab === 'plans'
@@ -292,7 +482,553 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                 </div>
               </div>
 
-              {actionGuideTab === 'plans' ? (
+              {actionGuideTab === 'distribution' ? (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={onDownloadManifest}
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#00f2fe]/45 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#00f2fe]">
+                        Priorité haute · 1. Configurer manifest.json (PWA)
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        Marina Visionnaire · start_url /?mode=guest · standalone · icônes 192/512 + maskable
+                      </div>
+                    </div>
+                    <Smartphone className="w-4 h-4 text-[#00f2fe] shrink-0" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => onToggleAdminMode(!isAdmin)}
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#40dcca]/45 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#40dcca]">
+                        Priorité haute · 2. Variable IS_ADMIN = {String(isAdmin)} (Mode Invité)
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        Isoler l&apos;admin du client final · masquer consoles MCP, JSON &amp; outils d&apos;édition
+                      </div>
+                    </div>
+                    <UserCheck className="w-4 h-4 text-[#40dcca] shrink-0" />
+                  </button>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onShareApp(true)}
+                      className="p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 flex items-center justify-between gap-2 text-left transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-xs font-mono text-[#00f2fe]">
+                          Priorité moyenne · 3. partagerApp()
+                        </div>
+                        <div className="text-[11px] text-[#9eb2b8] break-words">
+                          Partage mobile navigator.share (Bento Grid)
+                        </div>
+                      </div>
+                      <Share2 className="w-4 h-4 text-[#00f2fe] shrink-0" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onOpenQrShare(true)}
+                      className="p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 flex items-center justify-between gap-2 text-left transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-xs font-mono text-[#ffba38]">
+                          Priorité basse · 4. QR Code PWA
+                        </div>
+                        <div className="text-[11px] text-[#9eb2b8] break-words">
+                          Générer &amp; télécharger QR Code (?mode=guest)
+                        </div>
+                      </div>
+                      <QrCode className="w-4 h-4 text-[#ffba38] shrink-0" />
+                    </button>
+                  </div>
+                </div>
+              ) : actionGuideTab === 'synthese' ? (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cmd =
+                        '/memoire --note "Contexte MarineVision AI validé : +213 6 97 29 60 59 · belaid.mounir.40@gmail.com · 20€/50€/100€ · Méditerranée"';
+                      setCmdInput(cmd);
+                      onExecuteCommand(cmd);
+                    }}
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#00f2fe]/45 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#00f2fe]">
+                        Priorité haute · 1. Exécuter /memoire (persistance visionia_memoire)
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        Valide contact ({contact.phone} · {contact.email}), tarifs (20 € / 50 € / 100 €) et schéma GPS lat/lon
+                      </div>
+                    </div>
+                    <Database className="w-4 h-4 text-[#00f2fe] shrink-0" />
+                  </button>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={onExportPdf}
+                      className="p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 flex items-center justify-between gap-2 text-left transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-xs font-mono text-[#ffba38]">
+                          Priorité moyenne · 2a. /pdf
+                        </div>
+                        <div className="text-[11px] text-[#9eb2b8] break-words">
+                          Rapport structure &amp; tarifs PDF
+                        </div>
+                      </div>
+                      <FileText className="w-4 h-4 text-[#ffba38] shrink-0" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={onExportXlsx}
+                      className="p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 flex items-center justify-between gap-2 text-left transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-xs font-mono text-[#40dcca]">
+                          Priorité moyenne · 2b. /excel
+                        </div>
+                        <div className="text-[11px] text-[#9eb2b8] break-words">
+                          Archivage donnees_visionia.xlsx
+                        </div>
+                      </div>
+                      <FileSpreadsheet className="w-4 h-4 text-[#40dcca] shrink-0" />
+                    </button>
+                  </div>
+
+                  <div className="p-3 rounded-lg bg-[#19202a] border border-[#40dcca]/45 space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-xs font-mono text-[#40dcca]">
+                        Priorité haute · 3. Définir 1ère zone géographique cible &amp; POI
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cmd = '/set_zone --zone "skikda"';
+                          setCmdInput(cmd);
+                          onExecuteCommand(cmd);
+                        }}
+                        className="px-2.5 py-1.5 rounded bg-[#080f18] hover:bg-[#232a34] border border-[#00f2fe]/40 text-[11px] font-mono text-[#00f2fe]"
+                      >
+                        /set_zone skikda
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cmd = '/set_zone --zone "mediterranee"';
+                          setCmdInput(cmd);
+                          onExecuteCommand(cmd);
+                        }}
+                        className="px-2.5 py-1.5 rounded bg-[#080f18] hover:bg-[#232a34] border border-[#40dcca]/40 text-[11px] font-mono text-[#40dcca]"
+                      >
+                        /set_zone mediterranee
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onOpenManualPoint}
+                        className="px-2.5 py-1.5 rounded bg-[#00f2fe] hover:bg-[#6ff6ff] text-[#002022] text-[11px] font-bold flex items-center gap-1 ml-auto"
+                      >
+                        <MapPinPlus className="w-3.5 h-3.5" />
+                        <span>+ Ajouter POI (/add_point)</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : actionGuideTab === 'mediterranee-db' ? (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={onIndexRagDatabase}
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#00f2fe]/45 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#00f2fe]">
+                        Priorité haute · 1. Mémoriser &amp; indexer dans le RAG local
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        {ragIndex.total_docs} fiches unifiées (Skikda, Marseille, Maddalena, Lavezzi, Cap Bon, Kornati, Costa Brava, Al Hoceïma)
+                      </div>
+                    </div>
+                    <Database className="w-4 h-4 text-[#00f2fe] shrink-0" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      document
+                        .getElementById('med-poi-panel')
+                        ?.scrollIntoView({ behavior: 'smooth' })
+                    }
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#40dcca]/45 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#40dcca]">
+                        Priorité moyenne · 2. Calcul dynamique de distance GPS (Haversine)
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        Calcul temps réel entre position GPS / libre et les {pointsInteret.length} POI Méditerranée
+                      </div>
+                    </div>
+                    <LocateFixed className="w-4 h-4 text-[#40dcca] shrink-0" />
+                  </button>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onOpenImplScriptModal('javascript')}
+                      className="p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 flex items-center justify-between gap-2 text-left transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-xs font-mono text-[#ffba38]">
+                          Priorité moyenne · 3a. Script JS
+                        </div>
+                        <div className="text-[11px] text-[#9eb2b8] break-words">
+                          Menu sélection + Haversine JS
+                        </div>
+                      </div>
+                      <FileCode2 className="w-4 h-4 text-[#ffba38] shrink-0" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onOpenImplScriptModal('python')}
+                      className="p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 flex items-center justify-between gap-2 text-left transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-xs font-mono text-[#40dcca]">
+                          Priorité moyenne · 3b. Script Python
+                        </div>
+                        <div className="text-[11px] text-[#9eb2b8] break-words">
+                          Menu sélection + Haversine .py
+                        </div>
+                      </div>
+                      <FileCode2 className="w-4 h-4 text-[#40dcca] shrink-0" />
+                    </button>
+                  </div>
+                </div>
+              ) : actionGuideTab === 'lieux-nav' ? (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={onOpenNavView}
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#00f2fe]/45 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#00f2fe]">
+                        Priorité haute · 1. Sélecteur dynamique Lieux &amp; Navigation
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        Menu déroulant Golfe de Skikda · Méditerranée · Côte d&apos;Azur (actif : {config.region})
+                      </div>
+                    </div>
+                    <Globe className="w-4 h-4 text-[#00f2fe] shrink-0" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onOpenManualPoint}
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#40dcca]/45 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#40dcca]">
+                        Priorité haute · 2. Modal Saisie Manuelle (Nom, Lat, Lon)
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        Ajouter point manuel avec infobulle d&apos;aide + maintien &quot;Enregistrer ma position&quot;
+                      </div>
+                    </div>
+                    <MapPinPlus className="w-4 h-4 text-[#40dcca] shrink-0" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onExportLieuxNavJson}
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#ffba38]">
+                        Priorité moyenne · 3. Configuration JSON proposée
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        lieux_navigation_config.json (lieux_navigation_ui + zones + points)
+                      </div>
+                    </div>
+                    <FileCode2 className="w-4 h-4 text-[#ffba38] shrink-0" />
+                  </button>
+                </div>
+              ) : actionGuideTab === 'freemium' ? (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={onExportMedPoisJson}
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#00f2fe]/45 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#00f2fe]">
+                        Priorité haute · 1. Générer JSON PointsInteret Méditerranée
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        {pointsInteret.length} POI Méditerranée ($GNRMC + Geofencing) → points_interet_mediterranee.json
+                      </div>
+                    </div>
+                    <Globe className="w-4 h-4 text-[#00f2fe] shrink-0" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      document
+                        .getElementById('has-access-manager')
+                        ?.scrollIntoView({ behavior: 'smooth' })
+                    }
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#ffba38]">
+                        Priorité moyenne · 2. Icônes visuelles Premium (hasAccess)
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        Couronne Premium vs Gratuit sur Alertes Collision IA &amp; Historique Illimité
+                      </div>
+                    </div>
+                    <Crown className="w-4 h-4 text-[#ffba38] shrink-0" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      document
+                        .getElementById('license-activation-panel')
+                        ?.scrollIntoView({ behavior: 'smooth' })
+                    }
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#40dcca]">
+                        Priorité moyenne · 3. Licence manuelle dans visionia_memoire
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        Codes d&apos;activation clé en main &amp; checkout Stripe / PayPal
+                      </div>
+                    </div>
+                    <KeyRound className="w-4 h-4 text-[#40dcca] shrink-0" />
+                  </button>
+                </div>
+              ) : actionGuideTab === 'gps-pin' ? (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={onSaveCurrentPosition}
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#00f2fe]/45 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#00f2fe]">
+                        Priorité haute · 1. Bouton &quot;Enregistrer ma position&quot;
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        Capture auto via navigator.geolocation + saisie du nom du lieu uniquement
+                      </div>
+                    </div>
+                    <MapPin className="w-4 h-4 text-[#00f2fe] shrink-0" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cmd =
+                        '/memoire --note "Enregistrement GPS 1-clic (nom + lat/lon auto via navigator.geolocation)"';
+                      setCmdInput(cmd);
+                      onExecuteCommand(cmd);
+                    }}
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#ffba38]">
+                        Priorité moyenne · 2. Mémoriser via /memoire
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        Enregistrer la décision d&apos;implémentation dans visionia_optimization.json
+                      </div>
+                    </div>
+                    <Database className="w-4 h-4 text-[#ffba38] shrink-0" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onExtractAndSaveJson}
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#40dcca]">
+                        Priorité haute · 3. Schéma de stockage (nom, lat, lon)
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        {config.saved_places?.length || 0} lieu(x) épinglé(s) · Exporter le schéma JSON
+                      </div>
+                    </div>
+                    <Save className="w-4 h-4 text-[#40dcca] shrink-0" />
+                  </button>
+                </div>
+              ) : actionGuideTab === 'ux' ? (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={onFocusBento}
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#40dcca]">
+                        Priorité haute · 1. Bento grid épuré par défaut
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        Métadonnées techniques masquées en mer + vitesse (kts) agrandie
+                      </div>
+                    </div>
+                    <LayoutGrid className="w-4 h-4 text-[#00f2fe] shrink-0" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onFocusCompassGps}
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#40dcca]">
+                        Priorité haute · 2. Distances NM accentuées (AISStream)
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        EL-KALA II (1.8 NM ambre) et STORA PILOT 01 (2.4 NM cyan) mis en valeur
+                      </div>
+                    </div>
+                    <Compass className="w-4 h-4 text-[#ffba38] shrink-0" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onOpenPasserelle}
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#40dcca]">
+                        Priorité moyenne · 3. Agent MCP migré vers Passerelle Méditerranéenne
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        Barre de navigation allégée à 3 vues (Bento · Sonar · Nav)
+                      </div>
+                    </div>
+                    <Sliders className="w-4 h-4 text-[#40dcca] shrink-0" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onFocusCompassGps}
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#40dcca]">
+                        Priorité moyenne · 4. Bouton plein &quot;Activer Capteurs Natifs&quot;
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        Bouton principal haute visibilité pour Cap Magnétique et Position GPS
+                      </div>
+                    </div>
+                    <LocateFixed className="w-4 h-4 text-[#00f2fe] shrink-0" />
+                  </button>
+                </div>
+              ) : actionGuideTab === 'pwa' ? (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={onExportNetlifyToml}
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#ffb4ab]">
+                        Priorité haute · 1. Configurer netlify.toml (racine)
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        Anti-cache HTTP + Permissions-Policy (geolocation, camera)
+                      </div>
+                    </div>
+                    <FileCode2 className="w-4 h-4 text-[#00f2fe] shrink-0" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cmd = '/pwa_check_update --force_skip_waiting';
+                      setCmdInput(cmd);
+                      onExecuteCommand(cmd);
+                    }}
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#ffb4ab]">
+                        Priorité haute · 2. service-worker.js (Network-First + skipWaiting)
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        Auto-rafraîchissement et activation immédiate sur Android
+                      </div>
+                    </div>
+                    <RefreshCw className="w-4 h-4 text-[#40dcca] shrink-0" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      document
+                        .getElementById('pwa-deploy-panel')
+                        ?.scrollIntoView({ behavior: 'smooth' });
+                      onExecuteCommand('/pwa_check_update');
+                    }}
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#ffba38]">
+                        Priorité moyenne · 3. index.html (enregistrement SW &amp; MAJ auto)
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        updateViaCache: &apos;none&apos;, manifest.json &amp; vérification 60s
+                      </div>
+                    </div>
+                    <Smartphone className="w-4 h-4 text-[#ffba38] shrink-0" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cmd = '/netlify_sync --branch "main" --auto_publish';
+                      setCmdInput(cmd);
+                      onExecuteCommand(cmd);
+                    }}
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#ffba38]">
+                        Priorité moyenne · 4. Connecter GitHub → Netlify CI/CD
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        Synchronisation continue {config.pwa_deploy.github_repo} →{' '}
+                        {config.pwa_deploy.netlify_site}
+                      </div>
+                    </div>
+                    <ShieldCheck className="w-4 h-4 text-[#40dcca] shrink-0" />
+                  </button>
+                </div>
+              ) : actionGuideTab === 'plans' ? (
                 <div className="space-y-2">
                   <button
                     type="button"
@@ -303,7 +1039,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                       <div className="text-xs font-mono text-[#ffb4ab]">
                         Priorité haute · 1. Intégrer marine_tools_config.json
                       </div>
-                      <div className="text-xs text-[#9eb2b8] truncate">
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
                         Synchroniser dans visionia_optimization.json (plans + droits)
                       </div>
                     </div>
@@ -319,7 +1055,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                       <div className="text-xs font-mono text-[#ffb4ab]">
                         Priorité haute · 2. Composant React Compas + GPS
                       </div>
-                      <div className="text-xs text-[#9eb2b8] truncate">
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
                         Inspecter DeviceOrientationEvent + GPS + verrouillage AISStream
                       </div>
                     </div>
@@ -335,7 +1071,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                       <div className="text-xs font-mono text-[#ffb4ab]">
                         Priorité haute · 3. Contrôle hasAccess(&apos;ais_stream&apos;)
                       </div>
-                      <div className="text-xs text-[#9eb2b8] truncate">
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
                         Vérifier le verrouillage AISStream (Gratuit vs Premium)
                       </div>
                     </div>
@@ -344,25 +1080,18 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => onReviseWeeklyPrice(4.99)}
+                    onClick={() => onSelectPlan('annual')}
                     className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 flex items-center justify-between gap-3 text-left transition-colors"
                   >
                     <div className="min-w-0">
-                      <div className="text-xs font-mono text-[#ffba38]">
-                        Priorité moyenne · 4. Réviser tarif Weekly ({weeklyPlan?.price_eur} EUR vs
-                        Yearly 12.99 EUR)
+                      <div className="text-xs font-mono text-[#40dcca]">
+                        Priorité moyenne · 4. Offres validées : 1 mois (20 €) · 3 mois (50 €) · 1 an (100 €)
                       </div>
-                      <div className="text-xs text-[#9eb2b8] truncate">
-                        {pricingAnomaly
-                          ? 'Anomalie détectée : cliquer pour ajuster Weekly à 4.99 EUR'
-                          : 'Tarification hebdomadaire révisée et cohérente'}
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        Contact : {contact.phone} · {contact.email} — Cliquer pour activer l&apos;offre 1 an
                       </div>
                     </div>
-                    <AlertTriangle
-                      className={`w-4 h-4 shrink-0 ${
-                        pricingAnomaly ? 'text-[#ffba38]' : 'text-[#40dcca]'
-                      }`}
-                    />
+                    <AlertTriangle className="w-4 h-4 text-[#40dcca] shrink-0" />
                   </button>
                 </div>
               ) : actionGuideTab === 'gps-l5' ? (
@@ -376,7 +1105,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                       <div className="text-xs font-mono text-[#ffb4ab]">
                         Priorité haute · 1. Mettre à jour visionia_optimization.json
                       </div>
-                      <div className="text-xs text-[#9eb2b8] truncate">
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
                         Inclut MARINE_GPS_TRACKER (GNSS_L5, 1Hz, buffer 25, 60s)
                       </div>
                     </div>
@@ -396,7 +1125,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                       <div className="text-xs font-mono text-[#ffb4ab]">
                         Priorité haute · 2. /system_hook --enable_sensor &quot;GNSS_L5&quot;
                       </div>
-                      <div className="text-xs text-[#9eb2b8] truncate">
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
                         Activer le matériel GNSS_L5 pour le flux 1Hz
                       </div>
                     </div>
@@ -412,7 +1141,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                       <div className="text-xs font-mono text-[#ffba38]">
                         Priorité moyenne · 3. Afficher GPSWidget (useGNSSStream)
                       </div>
-                      <div className="text-xs text-[#9eb2b8] truncate">
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
                         Ouvrir le composant React connecté au flux 1Hz sur le Bento
                       </div>
                     </div>
@@ -433,7 +1162,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                       <div className="text-xs font-mono text-[#ffba38]">
                         Priorité moyenne · 4. /set_auto_log → donnees_visionia.xlsx
                       </div>
-                      <div className="text-xs text-[#9eb2b8] truncate">
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
                         Automatiser l&apos;export des trajets toutes les 60s
                       </div>
                     </div>
@@ -449,7 +1178,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                       <div className="text-xs font-mono text-[#40dcca]">
                         Priorité basse · 5. Générer setup_marine_gps.json
                       </div>
-                      <div className="text-xs text-[#9eb2b8] truncate">
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
                         Inclut MARINE_GPS_TRACKER et paramètres de bathymétrie
                       </div>
                     </div>
@@ -471,7 +1200,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                       <div className="text-xs font-mono text-[#ffb4ab]">
                         Priorité haute · 1. /gnss_reset --force_on --update_interval 1000
                       </div>
-                      <div className="text-xs text-[#9eb2b8] truncate">
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
                         Réinitialiser le capteur GNSS (GPS, GLONASS, Galileo)
                       </div>
                     </div>
@@ -492,7 +1221,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                         Priorité haute · 2. /connect_nmea --port {nmeaPortInput} --baudrate{' '}
                         {nmeaBaudInput}
                       </div>
-                      <div className="text-xs text-[#9eb2b8] truncate">
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
                         Configurer NMEA 0183 (4800 baud) ou AIS (38400 baud)
                       </div>
                     </div>
@@ -512,7 +1241,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                       <div className="text-xs font-mono text-[#ffba38]">
                         Priorité moyenne · 3. /get_status --gnss
                       </div>
-                      <div className="text-xs text-[#9eb2b8] truncate">
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
                         Vérifier l&apos;état de la connexion satellite et l&apos;antenne
                       </div>
                     </div>
@@ -528,7 +1257,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                       <div className="text-xs font-mono text-[#40dcca]">
                         Priorité basse · 4. Script sync vers donnees_visionia.xlsx
                       </div>
-                      <div className="text-xs text-[#9eb2b8] truncate">
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
                         Générer l&apos;automatisation visionia_memoire → Excel
                       </div>
                     </div>
@@ -550,7 +1279,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                       <div className="text-xs font-mono text-[#ffb4ab]">
                         Priorité haute · 1. Exécuter /gnss_sync
                       </div>
-                      <div className="text-xs text-[#9eb2b8] truncate">
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
                         Calibrer la localisation sur Stora et corriger la dérive carte
                       </div>
                     </div>
@@ -570,7 +1299,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                       <div className="text-xs font-mono text-[#ffb4ab]">
                         Priorité haute · 2. /ollama --scan_area --radius &quot;500m&quot;
                       </div>
-                      <div className="text-xs text-[#9eb2b8] truncate">
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
                         Analyser la bathymétrie cible et générer les waypoints IA
                       </div>
                     </div>
@@ -586,7 +1315,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                       <div className="text-xs font-mono text-[#ffba38]">
                         Priorité moyenne · 3. Extraire JSON (libérer mémoire)
                       </div>
-                      <div className="text-xs text-[#9eb2b8] truncate">
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
                         Exporter vers visionia_optimization.json ({telemetry.memoryBufferMb} Mo)
                       </div>
                     </div>
@@ -606,7 +1335,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                       <div className="text-xs font-mono text-[#40dcca]">
                         Priorité basse · 4. Configurer Geofence Cap de Fer
                       </div>
-                      <div className="text-xs text-[#9eb2b8] truncate">
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
                         Périmètre sensible Cap de Fer · Ras El Hadid ({config.geofence.radius_m} m)
                       </div>
                     </div>
@@ -671,76 +1400,189 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
               })}
             </div>
 
-            {/* Weekly vs Yearly Pricing Audit */}
-            <div
-              className={`p-3.5 rounded-lg border space-y-2 ${
-                pricingAnomaly
-                  ? 'bg-[#ffba38]/10 border-[#ffba38]/40'
-                  : 'bg-[#19202a] border-[#40dcca]/30'
-              }`}
-            >
-              <div className="flex items-center justify-between gap-2 text-xs">
-                <span className="font-semibold text-[#e0fdff] flex items-center gap-1.5">
-                  <AlertTriangle
-                    className={`w-3.5 h-3.5 ${
-                      pricingAnomaly ? 'text-[#ffba38]' : 'text-[#40dcca]'
-                    }`}
-                  />
-                  <span>
-                    Audit Tarification Weekly ({weeklyPlan?.price_eur.toFixed(2)} EUR) vs Yearly (12.99
-                    EUR)
-                  </span>
+            {/* Validated Contact & 1 mois / 3 mois / 1 an Pricing Summary */}
+            <div className="p-3.5 rounded-lg border bg-[#19202a] border-[#40dcca]/35 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="font-semibold text-[#e0fdff]">
+                  Synthèse Projet &amp; Offres Validées ({contact.organization})
                 </span>
                 <span className="font-mono text-[11px] text-[#40dcca]">
-                  {pricingAnomaly ? 'À réviser' : 'Cohérent'}
+                  20 € · 50 € · 100 €
                 </span>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <label htmlFor="weekly-price-input" className="text-[11px] text-[#9eb2b8]">
-                  Tarif Weekly (EUR) :
-                </label>
-                <input
-                  id="weekly-price-input"
-                  type="number"
-                  step="0.50"
-                  min="0.99"
-                  value={weeklyPlan?.price_eur ?? 31.99}
-                  onChange={(e) => onReviseWeeklyPrice(parseFloat(e.target.value) || 4.99)}
-                  className="w-24 bg-[#080f18] border border-[#3a494b] rounded px-2 py-1 text-xs font-mono text-[#e0fdff]"
-                />
-                {pricingAnomaly && (
-                  <button
-                    type="button"
-                    onClick={() => onReviseWeeklyPrice(4.99)}
-                    className="px-2.5 py-1 rounded bg-[#ffba38] hover:bg-[#ffd491] text-[#002022] text-[11px] font-semibold"
-                  >
-                    Corriger à 4.99 EUR
-                  </button>
-                )}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-mono text-[#dce3f0]">
+                <span className="flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-[#00f2fe]" />
+                  <span>{contact.phone}</span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-[#40dcca]" />
+                  <span className="break-all">{contact.email}</span>
+                </span>
+                <span className="flex items-center gap-1.5 text-[#9eb2b8]">
+                  <Globe className="w-3.5 h-3.5 text-[#ffba38]" />
+                  <span>Zone : {contact.region}</span>
+                </span>
               </div>
             </div>
 
-            {/* hasAccess Feature Entitlements Table */}
-            <div className="space-y-1.5">
-              <div className="text-xs font-medium text-[#9eb2b8]">
-                Permissions conditionnelles (`hasAccess`)
+            {/* Manual License Key & Stripe / PayPal Turnkey Activation in visionia_memoire */}
+            <div
+              id="license-activation-panel"
+              className="p-3.5 rounded-lg bg-[#080f18] border border-[#00f2fe]/35 space-y-3"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <KeyRound className="w-4 h-4 text-[#00f2fe]" />
+                  <span className="text-xs font-semibold text-[#e0fdff]">
+                    Licence Clé en Main &amp; <code className="text-[#40dcca]">visionia_memoire</code>
+                  </span>
+                </div>
+                <span
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                    manualLicense.status === 'active'
+                      ? 'bg-[#40dcca]/15 text-[#40dcca] border border-[#40dcca]/40'
+                      : 'bg-[#232a34] text-[#9eb2b8]'
+                  }`}
+                >
+                  {manualLicense.status === 'active'
+                    ? `ACTIF (${manualLicense.provider})`
+                    : 'AUCUNE LICENCE'}
+                </span>
+              </div>
+
+              {manualLicense.status === 'active' ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-[#19202a] border border-[#40dcca]/40 text-xs">
+                  <div className="min-w-0">
+                    <div className="font-mono font-bold text-[#40dcca]">
+                      {manualLicense.code} · {getTierLabel(manualLicense.tier)}
+                    </div>
+                    <div className="text-[11px] text-[#9eb2b8]">
+                      Enregistré dans visionia_memoire ({manualLicense.activatedAt})
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onRevokeLicense}
+                    className="px-2.5 py-1 rounded bg-[#93000a]/30 text-[#ffb4ab] text-[11px] font-semibold"
+                  >
+                    Révoquer
+                  </button>
+                </div>
+              ) : (
+                <p className="text-[11px] text-[#9eb2b8]">
+                  Saisissez un code d&apos;activation manuel ou générez une licence clé en main via Stripe ou PayPal.
+                </p>
+              )}
+
+              <div className="flex flex-wrap gap-2">
+                <input
+                  type="text"
+                  aria-label="Code d'activation licence MarineVision"
+                  value={licenseInput}
+                  onChange={(e) => setLicenseInput(e.target.value)}
+                  placeholder="MV-1Y-2026"
+                  className="flex-1 min-w-[150px] bg-[#151c25] border border-[#3a494b] rounded-lg px-3 py-1.5 text-xs font-mono text-[#00f2fe] uppercase focus:outline-none focus:border-[#00f2fe]"
+                />
+                <button
+                  type="button"
+                  onClick={() => onActivateLicenseCode(licenseInput, 'Manuel')}
+                  className="px-3.5 py-1.5 rounded-lg bg-[#00f2fe] hover:bg-[#6ff6ff] text-[#002022] text-xs font-bold whitespace-nowrap"
+                >
+                  Activer code
+                </button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5">
+                {TURNKEY_LICENSE_PRESETS.map((preset) => (
+                  <button
+                    key={preset.code}
+                    type="button"
+                    onClick={() => {
+                      setLicenseInput(preset.code);
+                      onActivateLicenseCode(preset.code, 'Manuel');
+                    }}
+                    className="px-2 py-1 rounded bg-[#151c25] hover:bg-[#19202a] border border-[#3a494b]/60 text-[10px] font-mono text-[#9eb2b8] hover:text-[#40dcca]"
+                  >
+                    {preset.code} · {preset.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-[#3a494b]/40">
+                <button
+                  type="button"
+                  onClick={() => onPurchaseTurnkey('Stripe', 'monthly')}
+                  className="py-2 px-3 rounded-lg bg-[#635bff]/20 hover:bg-[#635bff]/30 border border-[#635bff]/50 text-[#e0fdff] text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                >
+                  <CreditCard className="w-3.5 h-3.5 text-[#a5b4fc]" />
+                  <span>Licence Stripe · 1 mois (20 €)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onPurchaseTurnkey('PayPal', 'annual')}
+                  className="py-2 px-3 rounded-lg bg-[#0070ba]/20 hover:bg-[#0070ba]/30 border border-[#009cde]/50 text-[#e0fdff] text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                >
+                  <CreditCard className="w-3.5 h-3.5 text-[#38bdf8]" />
+                  <span>Licence PayPal · 1 an (100 €)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* hasAccess Feature Entitlements Table with Visual Premium vs Free Icons */}
+            <div id="has-access-manager" className="space-y-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="font-medium text-[#9eb2b8]">
+                  Gestionnaire de permissions (<code className="text-[#40dcca]">hasAccess</code>)
+                </span>
+                <span className="flex items-center gap-3 text-[10px] font-mono">
+                  <span className="flex items-center gap-1 text-[#ffba38]">
+                    <Crown className="w-3 h-3" /> Premium
+                  </span>
+                  <span className="flex items-center gap-1 text-[#40dcca]">
+                    <Sparkles className="w-3 h-3" /> Gratuit
+                  </span>
+                </span>
               </div>
               {(Object.keys(tools.features) as MarineFeatureKey[]).map((key) => {
                 const rule = tools.features[key];
                 const granted = hasAccess(key, tools);
+                const isPremiumFeature = rule.required_tier === 'premium';
                 return (
                   <div
                     key={key}
-                    className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-[#19202a] border border-[#3a494b]/40 text-xs"
+                    className={`flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 p-2.5 rounded-lg border text-xs ${
+                      isPremiumFeature
+                        ? 'bg-[#19202a] border-[#ffba38]/30'
+                        : 'bg-[#19202a] border-[#3a494b]/40'
+                    }`}
                   >
-                    <div className="min-w-0 flex items-center gap-2">
-                      {granted ? (
-                        <Unlock className="w-3.5 h-3.5 text-[#40dcca] shrink-0" />
-                      ) : (
-                        <Lock className="w-3.5 h-3.5 text-[#ffba38] shrink-0" />
-                      )}
+                    <div className="min-w-0 flex items-center gap-2.5">
+                      <div
+                        className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${
+                          isPremiumFeature
+                            ? granted
+                              ? 'bg-[#ffba38]/20 text-[#ffba38]'
+                              : 'bg-[#232a34] text-[#ffba38]'
+                            : 'bg-[#40dcca]/15 text-[#40dcca]'
+                        }`}
+                        title={isPremiumFeature ? 'Fonction Premium' : 'Fonction Gratuite'}
+                      >
+                        {isPremiumFeature ? (
+                          <Crown className="w-3.5 h-3.5" />
+                        ) : (
+                          <Sparkles className="w-3.5 h-3.5" />
+                        )}
+                      </div>
                       <div className="min-w-0">
-                        <div className="text-[#e0fdff] truncate">{rule.label}</div>
+                        <div className="flex items-center gap-1.5 text-[#e0fdff] break-words">
+                          <span>{rule.label}</span>
+                          {granted ? (
+                            <Unlock className="w-3 h-3 text-[#40dcca] shrink-0" />
+                          ) : (
+                            <Lock className="w-3 h-3 text-[#ffb4ab] shrink-0" />
+                          )}
+                        </div>
                         <div className="text-[10px] font-mono text-[#9eb2b8]">
                           hasAccess(&apos;{key}&apos;) →{' '}
                           <span className={granted ? 'text-[#40dcca]' : 'text-[#ffb4ab]'}>
@@ -752,17 +1594,201 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                     <button
                       type="button"
                       onClick={() => onToggleFeatureTier(key)}
-                      className={`px-2.5 py-1 rounded font-mono text-[10px] border shrink-0 ${
-                        rule.required_tier === 'premium'
-                          ? 'bg-[#080f18] border-[#ffba38]/50 text-[#ffba38]'
-                          : 'bg-[#080f18] border-[#40dcca]/40 text-[#40dcca]'
+                      className={`px-2.5 py-1 rounded font-mono text-[10px] font-semibold border shrink-0 flex items-center gap-1 ${
+                        isPremiumFeature
+                          ? 'bg-[#ffba38]/10 border-[#ffba38]/50 text-[#ffba38]'
+                          : 'bg-[#40dcca]/10 border-[#40dcca]/40 text-[#40dcca]'
                       }`}
                     >
-                      {rule.required_tier.toUpperCase()}
+                      {isPremiumFeature ? (
+                        <Crown className="w-3 h-3" />
+                      ) : (
+                        <Sparkles className="w-3 h-3" />
+                      )}
+                      <span>{isPremiumFeature ? 'PREMIUM' : 'GRATUIT'}</span>
                     </button>
                   </div>
                 );
               })}
+            </div>
+          </section>
+
+          {/* Unified MarineVision Méditerranée POI Database, RAG Local & Haversine Distance */}
+          <section
+            id="med-poi-panel"
+            className="rounded-xl bg-[#151c25] border border-[#3a494b]/50 p-5 space-y-4"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-[#00f2fe]" />
+                <h3 className="text-base font-semibold text-[#e0fdff]">
+                  MarineVision Méditerranée · Base Unifiée (<code className="text-[#40dcca]">PointsInteret</code>)
+                </h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onOpenImplScriptModal('javascript')}
+                  className="px-2 py-1 rounded bg-[#080f18] border border-[#3a494b] text-[11px] font-mono text-[#ffba38] hover:border-[#ffba38]"
+                >
+                  Script JS
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onOpenImplScriptModal('python')}
+                  className="px-2 py-1 rounded bg-[#080f18] border border-[#3a494b] text-[11px] font-mono text-[#40dcca] hover:border-[#40dcca]"
+                >
+                  Script Python
+                </button>
+                <button
+                  type="button"
+                  onClick={onExportMedPoisJson}
+                  className="text-xs font-mono text-[#00f2fe] hover:underline"
+                >
+                  JSON
+                </button>
+              </div>
+            </div>
+
+            {/* Dynamic GPS Reference + NMEA Capture */}
+            <div className="p-3 rounded-lg bg-[#080f18] border border-[#3a494b]/50 space-y-2.5 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="font-mono text-[#40dcca]">
+                    Calculateur Haversine &amp; Capture $GNRMC
+                  </div>
+                  <div className="text-[11px] font-mono text-[#9eb2b8] break-all">
+                    {telemetry.nmeaSentence}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onCapturePoiFromGnrmc}
+                  className="px-3 py-1.5 rounded-lg bg-[#00f2fe] hover:bg-[#6ff6ff] text-[#002022] text-xs font-bold whitespace-nowrap shrink-0"
+                >
+                  + POI depuis $GNRMC
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#3a494b]/40">
+                <span className="text-[11px] text-[#9eb2b8]">Position GPS origine :</span>
+                <input
+                  type="text"
+                  aria-label="Latitude origine calcul distance"
+                  value={refLatInput}
+                  onChange={(e) => setRefLatInput(e.target.value)}
+                  className="w-24 bg-[#151c25] border border-[#3a494b] rounded px-2 py-1 text-[11px] font-mono text-[#00f2fe]"
+                />
+                <input
+                  type="text"
+                  aria-label="Longitude origine calcul distance"
+                  value={refLonInput}
+                  onChange={(e) => setRefLonInput(e.target.value)}
+                  className="w-24 bg-[#151c25] border border-[#3a494b] rounded px-2 py-1 text-[11px] font-mono text-[#00f2fe]"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRefLatInput(VESSEL_LAT.toFixed(4));
+                    setRefLonInput(VESSEL_LON.toFixed(4));
+                  }}
+                  className="px-2 py-1 rounded bg-[#19202a] border border-[#3a494b]/60 text-[10px] font-mono text-[#40dcca]"
+                >
+                  Skikda
+                </button>
+              </div>
+            </div>
+
+            {/* Local RAG Index Search & Trigger */}
+            <div className="p-3 rounded-lg bg-[#19202a] border border-[#00f2fe]/30 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-[#e0fdff]">
+                  <Database className="w-3.5 h-3.5 text-[#00f2fe]" />
+                  <span>RAG Local Méditerranée ({ragIndex.total_docs} docs indexés)</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={onIndexRagDatabase}
+                  className="px-2.5 py-1 rounded bg-[#00f2fe]/15 hover:bg-[#00f2fe]/25 border border-[#00f2fe]/40 text-[11px] font-mono text-[#00f2fe]"
+                >
+                  Indexer RAG local
+                </button>
+              </div>
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-[#9eb2b8] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={ragQuery}
+                  onChange={(e) => setRagQuery(e.target.value)}
+                  placeholder="Rechercher dans le RAG (ex: Corse, Kornati, Alboran, Skikda, mouillage)..."
+                  className="w-full bg-[#080f18] border border-[#3a494b] rounded-lg pl-8 pr-3 py-1.5 text-xs text-[#e0fdff] placeholder-[#849495] focus:outline-none focus:border-[#00f2fe]"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2 max-h-[30rem] overflow-y-auto">
+              {(() => {
+                const originLat = parseFloat(refLatInput.replace(',', '.'));
+                const originLon = parseFloat(refLonInput.replace(',', '.'));
+                const safeLat = Number.isNaN(originLat) ? VESSEL_LAT : originLat;
+                const safeLon = Number.isNaN(originLon) ? VESSEL_LON : originLon;
+                const matchedIds = ragQuery.trim()
+                  ? new Set(queryLocalRagIndex(ragIndex, ragQuery).map((e) => e.doc_id))
+                  : null;
+
+                return pointsInteret
+                  .filter((poi) => !matchedIds || matchedIds.has(poi.id))
+                  .map((poi) => {
+                    const vec = calculateGpsDistance(safeLat, safeLon, poi.lat, poi.lon);
+                    return { poi, vec };
+                  })
+                  .sort((a, b) => a.vec.distanceNm - b.vec.distanceNm)
+                  .map(({ poi, vec }) => {
+                    const aiAllowed = hasAccess('collision_ai_alerts', tools);
+                    return (
+                      <div
+                        key={poi.id}
+                        className="p-2.5 rounded-lg bg-[#19202a] border border-[#3a494b]/40 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 text-xs"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5 font-semibold text-[#e0fdff]">
+                            <MapPin className="w-3.5 h-3.5 text-[#00f2fe] shrink-0" />
+                            <span>{poi.nom}</span>
+                            {poi.pays && (
+                              <span className="text-[10px] font-mono text-[#40dcca] shrink-0">
+                                ({poi.pays})
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] font-mono text-[#9eb2b8] break-words">
+                            {poi.bassin || poi.secteur} · {poi.lat.toFixed(3)}°, {poi.lon.toFixed(3)}°
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <div className="text-right font-mono tabular-nums">
+                            <div className="text-xs font-bold text-[#00f2fe]">
+                              {vec.distanceNm.toFixed(1)} NM
+                            </div>
+                            <div className="text-[10px] text-[#9eb2b8]">
+                              {vec.distanceKm.toFixed(0)} km · {vec.bearingDeg}° {vec.cardinal}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => onTogglePoiAiAlert(poi.id)}
+                            className={`px-2 py-1 rounded text-[10px] font-mono border shrink-0 flex items-center gap-1 ${
+                              poi.alerte_collision_ia && aiAllowed
+                                ? 'bg-[#ffba38]/15 border-[#ffba38]/50 text-[#ffba38]'
+                                : 'bg-[#080f18] border-[#3a494b] text-[#9eb2b8]'
+                            }`}
+                          >
+                            {!aiAllowed && <Lock className="w-2.5 h-2.5 text-[#ffba38]" />}
+                            <span>{poi.alerte_collision_ia ? 'IA ON' : 'IA OFF'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  });
+              })()}
             </div>
           </section>
 
@@ -781,7 +1807,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
             </div>
 
             {/* Constellations GPS / GLONASS / Galileo */}
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {(
                 [
                   { id: 'gps', label: 'GPS', count: telemetry.satellites.gps },
@@ -814,7 +1840,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
 
             {/* Android Location Permission */}
             <div className="p-3.5 rounded-lg bg-[#19202a] space-y-2">
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2 text-xs font-medium text-[#e0fdff]">
                   <Smartphone className="w-4 h-4 text-[#40dcca]" />
                   <span>Autorisation Position Android</span>
@@ -922,8 +1948,8 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                 </button>
               </div>
 
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex-1 min-w-0 bg-[#080f18] border border-[#3a494b]/50 rounded px-2.5 py-1.5 font-mono text-[10px] text-[#40dcca] truncate">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex-1 min-w-[200px] bg-[#080f18] border border-[#3a494b]/50 rounded px-2.5 py-1.5 font-mono text-[10px] text-[#40dcca] break-all">
                   {telemetry.nmeaSentence}
                 </div>
                 <button
@@ -944,8 +1970,19 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
             <div className="p-3.5 rounded-lg bg-[#19202a] space-y-2.5">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-xs font-medium text-[#e0fdff]">
-                    Enregistrement trajets : <code className="text-[#00f2fe]">visionia_memoire</code>
+                  <div className="text-xs font-medium text-[#e0fdff] flex items-center gap-1.5">
+                    <span>
+                      Enregistrement trajets : <code className="text-[#00f2fe]">visionia_memoire</code>
+                    </span>
+                    {hasAccess('unlimited_history', tools) ? (
+                      <span className="px-1.5 py-0.5 rounded bg-[#ffba38]/15 text-[#ffba38] text-[10px] font-mono flex items-center gap-1">
+                        <Crown className="w-2.5 h-2.5" /> Illimité
+                      </span>
+                    ) : (
+                      <span className="px-1.5 py-0.5 rounded bg-[#232a34] text-[#9eb2b8] text-[10px] font-mono">
+                        Gratuit (max 5 pts)
+                      </span>
+                    )}
                   </div>
                   <div className="text-[11px] font-mono text-[#9eb2b8] tabular-nums">
                     {trackMemoire.length} point(s) enregistré(s) localement
@@ -1202,8 +2239,17 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
           </section>
         </div>
 
-        {/* Right: visionia_optimization.json & Streaming Event Log */}
+        {/* Right: PWA Deploy Panel, visionia_optimization.json & Streaming Event Log */}
         <div className="lg:col-span-6 space-y-5">
+          <PwaDeployPanel
+            pwaDeploy={config.pwa_deploy}
+            onUpdatePwaDeploy={onUpdatePwaDeploy}
+            onSyncNetlify={onSyncNetlify}
+            onExportNetlifyToml={onExportNetlifyToml}
+            onNotify={onNotify}
+            onLog={onLog}
+          />
+
           {/* JSON Config Manager */}
           <section className="rounded-xl bg-[#151c25] border border-[#3a494b]/50 p-5 space-y-4">
             <div className="flex items-center justify-between gap-2">
@@ -1237,7 +2283,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
               </pre>
             </div>
 
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <button
                 type="button"
                 onClick={() => onToggleConfigFlag('auto_pilot')}
@@ -1273,7 +2319,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                 <Save className="w-4 h-4" />
                 <span>Extraire JSON &amp; Libérer Mémoire</span>
               </button>
-              <div className="grid grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <button
                   type="button"
                   onClick={onReloadConfig}

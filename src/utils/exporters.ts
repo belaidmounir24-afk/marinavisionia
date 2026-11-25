@@ -1,4 +1,5 @@
-import { McpConfig, TrackPoint, Waypoint } from '../types/marine';
+import { McpConfig, PointInteretMed, TrackPoint, Waypoint } from '../types/marine';
+import { PROJECT_CONTACT } from './accessControl';
 import { SAMPLE_SKIKDA_CSV } from './navigation';
 
 function escapeXml(str: string): string {
@@ -116,12 +117,16 @@ function buildWorksheetXml(rows: string[][]): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetXml}</sheetData></worksheet>`;
 }
 
-export function exportWaypointsXlsx(waypoints: Waypoint[], trackPoints: TrackPoint[] = []): void {
+export function exportWaypointsXlsx(
+  waypoints: Waypoint[],
+  trackPoints: TrackPoint[] = [],
+  pointsInteret: PointInteretMed[] = []
+): void {
   const wpHeaders = [
     'id',
     'name',
     'lat',
-    'long',
+    'lon',
     'depth',
     'type',
     'distance_nm',
@@ -143,7 +148,7 @@ export function exportWaypointsXlsx(waypoints: Waypoint[], trackPoints: TrackPoi
     ]),
   ];
 
-  const trackHeaders = ['id', 'timestamp', 'lat', 'long', 'sog_kts', 'cog_deg', 'depth_m', 'protocol'];
+  const trackHeaders = ['id', 'timestamp', 'lat', 'lon', 'sog_kts', 'cog_deg', 'depth_m', 'protocol'];
   const trackRows = [
     trackHeaders,
     ...trackPoints.map((t) => [
@@ -158,11 +163,27 @@ export function exportWaypointsXlsx(waypoints: Waypoint[], trackPoints: TrackPoi
     ]),
   ];
 
+  const poiHeaders = ['id', 'nom', 'secteur', 'pays', 'lat', 'lon', 'type', 'rayon_m', 'source_nmea'];
+  const poiRows = [
+    poiHeaders,
+    ...pointsInteret.map((p) => [
+      p.id,
+      p.nom,
+      p.bassin || p.secteur,
+      p.pays || 'Méditerranée',
+      String(p.lat),
+      String(p.lon),
+      p.type,
+      String(p.rayon_m),
+      p.source_nmea || '$GNRMC',
+    ]),
+  ];
+
   const blob = buildStoreZip([
     {
       name: '[Content_Types].xml',
       content:
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>',
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>',
     },
     {
       name: '_rels/.rels',
@@ -172,12 +193,12 @@ export function exportWaypointsXlsx(waypoints: Waypoint[], trackPoints: TrackPoi
     {
       name: 'xl/workbook.xml',
       content:
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Golfe_Skikda" sheetId="1" r:id="rId1"/><sheet name="visionia_memoire" sheetId="2" r:id="rId2"/></sheets></workbook>',
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Waypoints_GPS" sheetId="1" r:id="rId1"/><sheet name="visionia_memoire" sheetId="2" r:id="rId2"/><sheet name="PointsInteret_Med" sheetId="3" r:id="rId3"/></sheets></workbook>',
     },
     {
       name: 'xl/_rels/workbook.xml.rels',
       content:
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/></Relationships>',
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/></Relationships>',
     },
     {
       name: 'xl/worksheets/sheet1.xml',
@@ -187,25 +208,41 @@ export function exportWaypointsXlsx(waypoints: Waypoint[], trackPoints: TrackPoi
       name: 'xl/worksheets/sheet2.xml',
       content: buildWorksheetXml(trackRows),
     },
+    {
+      name: 'xl/worksheets/sheet3.xml',
+      content: buildWorksheetXml(poiRows),
+    },
   ]);
 
   triggerFileDownload(blob, 'donnees_visionia.xlsx');
 }
 
-export function exportOptimizationJson(config: McpConfig, waypoints: Waypoint[]): McpConfig {
+export function exportOptimizationJson(
+  config: McpConfig,
+  waypoints: Waypoint[]
+): McpConfig {
   const synced: McpConfig = {
     ...config,
+    project_contact: config.project_contact || { ...PROJECT_CONTACT },
     points_navigation: waypoints.map((w) => ({
       id: w.id,
       name: w.name,
       lat: w.lat,
       long: w.lon,
+      gps: {
+        lat: w.lat,
+        lon: w.lon,
+        datum: 'WGS84',
+      },
       depth: w.depthM,
       type: w.rawType || w.category,
     })),
+    saved_places: config.saved_places || [],
+    memoire_decisions: config.memoire_decisions || [],
   };
 
   const payload = {
+    schema: 'marinevision.project.structure/v2',
     exported_at: new Date().toISOString(),
     ...synced,
   };
@@ -254,6 +291,58 @@ export function exportMarineToolsConfigJson(toolsConfig: McpConfig['marine_tools
   );
 }
 
+export function exportMedPointsInteretJson(points: PointInteretMed[]): void {
+  const payload = {
+    schema: 'marinevision.mediterranee.poi_database/v2',
+    app_brand: 'MarineVision Méditerranée',
+    contact: PROJECT_CONTACT,
+    region: 'Méditerranée · Base Unifiée',
+    capture_nmea: '$GNRMC',
+    generated_at: new Date().toISOString(),
+    PointsInteret: points.map((p) => ({
+      ...p,
+      gps: { lat: p.lat, lon: p.lon, datum: 'WGS84' },
+    })),
+  };
+  triggerFileDownload(
+    new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }),
+    'marinevision_mediterranee_poi.json'
+  );
+}
+
+export function downloadImplScript(scriptText: string, lang: 'javascript' | 'python'): void {
+  const ext = lang === 'python' ? 'py' : 'js';
+  const mime = lang === 'python' ? 'text/x-python;charset=utf-8' : 'text/javascript;charset=utf-8';
+  triggerFileDownload(new Blob([scriptText], { type: mime }), `marinevision_mediterranee_menu.${ext}`);
+}
+
+export function exportLieuxNavigationConfigJson(
+  config: McpConfig,
+  waypoints: Waypoint[]
+): void {
+  const payload = {
+    schema: 'marinevision.lieux_navigation.config/v1',
+    generated_at: new Date().toISOString(),
+    active_zone_id: config.active_zone_id || 'skikda',
+    region: config.region,
+    lieux_navigation_ui: config.lieux_navigation_ui,
+    points_navigation: waypoints.map((w) => ({
+      id: w.id,
+      name: w.name,
+      lat: w.lat,
+      long: w.lon,
+      depth: w.depthM,
+      type: w.rawType || w.category,
+      zone_id: w.zoneId || 'skikda',
+      manual_entry: Boolean(w.isManual),
+    })),
+  };
+  triggerFileDownload(
+    new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }),
+    'lieux_navigation_config.json'
+  );
+}
+
 export function downloadSampleSkikdaCsv(): void {
   const blob = new Blob([SAMPLE_SKIKDA_CSV], { type: 'text/csv;charset=utf-8' });
   triggerFileDownload(blob, 'skikda_points.csv');
@@ -263,3 +352,29 @@ export function downloadSyncScript(scriptText: string): void {
   const blob = new Blob([scriptText], { type: 'text/x-python;charset=utf-8' });
   triggerFileDownload(blob, 'sync_visionia_xlsx.py');
 }
+
+export const NETLIFY_TOML_PREVIEW = `[build]
+  command = "npm run build"
+  publish = "dist"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Permissions-Policy = "geolocation=(self), camera=(self), gyroscope=(self), magnetometer=(self)"
+
+[[headers]]
+  for = "/service-worker.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate, max-age=0"
+    Service-Worker-Allowed = "/"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate, max-age=0"`;
+
+export function exportNetlifyToml(): void {
+  const blob = new Blob([NETLIFY_TOML_PREVIEW + '\n'], { type: 'text/plain;charset=utf-8' });
+  triggerFileDownload(blob, 'netlify.toml');
+}
+

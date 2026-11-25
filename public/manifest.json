@@ -1,0 +1,34 @@
+{
+  "id": "/",
+  "name": "Marina Visionnaire — Méditerranée",
+  "short_name": "MarinaVision",
+  "description": "Application PWA de navigation maritime en Méditerranée : carte tactique, sondeur CHIRP, capture GPS et partage en Mode Invité.",
+  "start_url": "/?mode=guest",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "lang": "fr",
+  "theme_color": "#0d141d",
+  "background_color": "#0d141d",
+  "categories": ["navigation", "utilities"],
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

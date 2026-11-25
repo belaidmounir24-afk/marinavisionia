@@ -1,6 +1,6 @@
 {
   "name": "MarineVision AI — Golfe de Skikda",
   "description": "Console tactique de navigation maritime, sondeur CHIRP, gestion de waypoints CSV/GPX et agent MCP local pour le Golfe de Skikda.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["geolocation", "camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

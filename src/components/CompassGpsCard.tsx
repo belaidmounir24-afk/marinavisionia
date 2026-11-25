@@ -14,6 +14,7 @@ import { getCardinal, VESSEL_LAT, VESSEL_LON } from '../utils/navigation';
 interface CompassGpsCardProps {
   telemetry: TelemetryState;
   toolsConfig: MarineToolsConfig;
+  showTechDetails?: boolean;
   onSelectPlan: (tier: SubscriptionTier) => void;
   onNotify: (msg: string) => void;
 }
@@ -23,13 +24,30 @@ interface DeviceOrientationWithPermission {
 }
 
 const AIS_TARGETS_SKIKDA = [
-  { mmsi: '605012440', name: 'EL-KALA II (Chalutier)', dist: '1.8 NM', cog: '048°', sog: '6.2 kts' },
-  { mmsi: '605089112', name: 'STORA PILOT 01', dist: '2.4 NM', cog: '312°', sog: '11.4 kts' },
+  {
+    mmsi: '605012440',
+    name: 'EL-KALA II',
+    vesselType: 'Chalutier',
+    distNm: '1.8',
+    cog: '048°',
+    sogKts: '6.2',
+    proximity: 'close' as const,
+  },
+  {
+    mmsi: '605089112',
+    name: 'STORA PILOT 01',
+    vesselType: 'Pilote',
+    distNm: '2.4',
+    cog: '312°',
+    sogKts: '11.4',
+    proximity: 'nominal' as const,
+  },
 ];
 
 export const CompassGpsCard: React.FC<CompassGpsCardProps> = ({
   telemetry,
   toolsConfig,
+  showTechDetails = false,
   onSelectPlan,
   onNotify,
 }) => {
@@ -123,7 +141,7 @@ export const CompassGpsCard: React.FC<CompassGpsCardProps> = ({
     }
 
     setNativeActive(true);
-    onNotify('Capteurs natifs Compas (DeviceOrientationEvent) + GPS activés');
+    onNotify('Capteurs natifs Compas + GPS activés');
   };
 
   const compassAccess = hasAccess('compass_gps', toolsConfig);
@@ -141,39 +159,44 @@ export const CompassGpsCard: React.FC<CompassGpsCardProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-base font-semibold text-[#e0fdff]">Compas Magnétique + GPS</h3>
-              <span className="text-[11px] font-mono text-[#00f2fe]">
-                {getTierLabel(toolsConfig.active_plan)}
-              </span>
+              <h3 className="text-base font-semibold text-[#e0fdff]">Cap Magnétique &amp; Position GPS</h3>
+              {showTechDetails && (
+                <span className="text-xs font-mono text-[#00f2fe]">
+                  {getTierLabel(toolsConfig.active_plan)}
+                </span>
+              )}
             </div>
-            <p className="text-xs font-mono text-[#9eb2b8]">
-              API : {toolsConfig.sensors_api.compass} · {toolsConfig.sensors_api.geolocation}
-            </p>
+            {showTechDetails && (
+              <p className="text-xs font-mono text-[#9eb2b8]">
+                API : {toolsConfig.sensors_api.compass} · {toolsConfig.sensors_api.geolocation}
+              </p>
+            )}
           </div>
         </div>
 
+        {/* High-visibility Solid Primary CTA Button */}
         <button
           type="button"
           onClick={handleToggleNativeSensors}
-          className={`px-3 py-1.5 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 transition-colors ${
+          className={`px-5 py-2.5 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 shadow-md ${
             nativeActive
-              ? 'bg-[#40dcca] text-[#002022]'
-              : 'bg-[#232a34] hover:bg-[#2e353f] border border-[#3a494b] text-[#e0fdff]'
+              ? 'bg-[#40dcca] hover:bg-[#5cecd9] text-[#002022] shadow-[#40dcca]/20'
+              : 'bg-[#00f2fe] hover:bg-[#6ff6ff] text-[#002022] shadow-[#00f2fe]/20'
           }`}
         >
-          <Navigation className="w-3.5 h-3.5" />
+          <Navigation className="w-4 h-4" />
           <span>{nativeActive ? 'Capteurs Natifs Actifs' : 'Activer Capteurs Natifs'}</span>
         </button>
       </div>
 
       {!compassAccess ? (
         <div className="p-4 rounded-lg bg-[#080f18] border border-[#ffb4ab]/40 text-xs text-[#ffb4ab]">
-          Module Compas + GPS désactivé par `marine_tools_config.json`.
+          Module Compas + GPS désactivé dans les paramètres.
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-stretch">
           {/* Animated Compass Dial */}
-          <div className="md:col-span-4 flex items-center gap-4 p-3 rounded-lg bg-[#080f18] border border-[#3a494b]/50">
+          <div className="md:col-span-4 flex items-center gap-4 p-3.5 rounded-lg bg-[#080f18] border border-[#3a494b]/50">
             <svg className="w-20 h-20 shrink-0" viewBox="0 0 100 100" aria-label="Rose des vents">
               <circle cx="50" cy="50" r="44" stroke="#3a494b" strokeWidth="1.5" fill="#0d141d" />
               <circle
@@ -204,84 +227,111 @@ export const CompassGpsCard: React.FC<CompassGpsCardProps> = ({
               </g>
             </svg>
             <div>
-              <div className="text-[11px] font-mono text-[#9eb2b8]">Cap Magnétique</div>
-              <div className="text-2xl font-mono font-bold text-[#e0fdff] tabular-nums">
+              <div className="text-xs text-[#9eb2b8]">Cap Magnétique</div>
+              <div className="text-3xl font-mono font-bold text-[#00f2fe] tabular-nums mt-0.5">
                 {String(compassDeg).padStart(3, '0')}°{' '}
-                <span className="text-sm text-[#40dcca]">{getCardinal(compassDeg)}</span>
+                <span className="text-base text-[#40dcca]">{getCardinal(compassDeg)}</span>
               </div>
-              <div className="text-[10px] font-mono text-[#9eb2b8] mt-1">{sensorSource}</div>
+              {showTechDetails && (
+                <div className="text-[10px] font-mono text-[#9eb2b8] mt-1">{sensorSource}</div>
+              )}
             </div>
           </div>
 
           {/* Native GPS Position */}
-          <div className="md:col-span-3 p-3.5 rounded-lg bg-[#19202a] border border-[#3a494b]/40 space-y-1.5">
-            <div className="text-[11px] font-mono text-[#9eb2b8]">GPS Position</div>
-            <div className="text-sm font-mono font-semibold text-[#e0fdff] tabular-nums">
+          <div className="md:col-span-3 p-3.5 rounded-lg bg-[#19202a] border border-[#3a494b]/40 flex flex-col justify-center space-y-1">
+            <div className="text-xs text-[#9eb2b8]">Position GPS</div>
+            <div className="text-base font-mono font-bold text-[#e0fdff] tabular-nums">
               {gpsCoords.lat.toFixed(4)}° N
             </div>
-            <div className="text-sm font-mono font-semibold text-[#00f2fe] tabular-nums">
+            <div className="text-base font-mono font-bold text-[#00f2fe] tabular-nums">
               {gpsCoords.lon.toFixed(4)}° E
             </div>
-            <div className="text-[11px] font-mono text-[#40dcca] tabular-nums">
+            <div className="text-xs font-mono font-semibold text-[#40dcca] tabular-nums pt-0.5">
               Précision ±{gpsCoords.acc} m
             </div>
           </div>
 
-          {/* AISStream Premium Gated Module via hasAccess('ais_stream') */}
-          <div className="md:col-span-5 p-3.5 rounded-lg bg-[#19202a] border border-[#3a494b]/40 space-y-2">
+          {/* AISStream Premium Gated Module */}
+          <div className="md:col-span-5 p-3.5 rounded-lg bg-[#19202a] border border-[#3a494b]/40 flex flex-col justify-between space-y-2.5">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-[#e0fdff]">
                 <Radio className="w-3.5 h-3.5 text-[#00f2fe]" />
-                <span>AISStream · Trafic Maritime</span>
+                <span>AISStream · Trafic Proche</span>
               </div>
               {aisAccess ? (
-                <span className="flex items-center gap-1 text-[11px] font-mono text-[#40dcca]">
+                <span className="flex items-center gap-1 text-[11px] font-mono font-semibold text-[#40dcca]">
                   <Unlock className="w-3 h-3" />
-                  <span>Premium Actif</span>
+                  <span>Actif</span>
                 </span>
               ) : (
                 <span className="flex items-center gap-1 text-[11px] font-mono text-[#ffba38]">
                   <Lock className="w-3 h-3" />
-                  <span>Verrouillé (Free)</span>
+                  <span>Premium</span>
                 </span>
               )}
             </div>
 
             {aisAccess ? (
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 {AIS_TARGETS_SKIKDA.map((t) => (
                   <div
                     key={t.mmsi}
-                    className="flex items-center justify-between text-[11px] font-mono bg-[#080f18] px-2.5 py-1.5 rounded border border-[#3a494b]/40"
+                    className="flex items-center justify-between gap-3 bg-[#080f18] px-3 py-2 rounded-lg border border-[#3a494b]/40"
                   >
-                    <span className="text-[#e0fdff] truncate">{t.name}</span>
-                    <span className="text-[#40dcca] shrink-0 tabular-nums">
-                      {t.dist} · {t.sog}
-                    </span>
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-[#e0fdff] truncate">
+                        {t.name}
+                      </div>
+                      <div className="text-[11px] text-[#9eb2b8] truncate">
+                        {t.vesselType}
+                        {showTechDetails ? ` · MMSI ${t.mmsi} · Cap ${t.cog}` : ''}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0 flex items-baseline gap-2.5">
+                      <span
+                        className={`text-base sm:text-lg font-mono font-bold tabular-nums px-2 py-0.5 rounded ${
+                          t.proximity === 'close'
+                            ? 'bg-[#ffba38]/15 text-[#ffba38]'
+                            : 'bg-[#00f2fe]/15 text-[#00f2fe]'
+                        }`}
+                      >
+                        {t.distNm} <span className="text-xs font-semibold">NM</span>
+                      </span>
+                      <span className="text-sm font-mono font-bold text-[#40dcca] tabular-nums">
+                        {t.sogKts} <span className="text-[11px] font-normal">kts</span>
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="bg-[#080f18] border border-[#ffba38]/30 rounded p-2.5 space-y-2">
-                <div className="text-[11px] text-[#9eb2b8]">
-                  <code className="text-[#ffba38]">hasAccess(&apos;ais_stream&apos;) = false</code> ·
-                  Les cibles AISStream sont réservées aux plans Premium.
+              <div className="bg-[#080f18] border border-[#ffba38]/30 rounded-lg p-3 space-y-2.5">
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="text-[#9eb2b8] truncate">
+                    {showTechDetails
+                      ? "hasAccess('ais_stream') = false · Verrouillé Free"
+                      : 'EL-KALA II · STORA PILOT 01 (Verrouillé)'}
+                  </span>
+                  <span className="text-xs font-mono font-bold text-[#ffba38] shrink-0 tabular-nums">
+                    1.8 NM · 2.4 NM
+                  </span>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => onSelectPlan('yearly')}
-                    className="px-2.5 py-1 rounded bg-[#00f2fe] hover:bg-[#6ff6ff] text-[#002022] text-[11px] font-semibold flex items-center gap-1"
+                    onClick={() => onSelectPlan('monthly')}
+                    className="px-3 py-1.5 rounded-lg bg-[#00f2fe] hover:bg-[#6ff6ff] text-[#002022] text-xs font-bold flex items-center gap-1.5"
                   >
-                    <ShieldCheck className="w-3 h-3" />
-                    <span>Passer Yearly (12.99 EUR)</span>
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>Débloquer 1 mois (20 €)</span>
                   </button>
                   <button
                     type="button"
-                    onClick={() => onSelectPlan('one_time')}
-                    className="px-2.5 py-1 rounded bg-[#232a34] hover:bg-[#2e353f] text-[#e0fdff] text-[11px] font-medium"
+                    onClick={() => onSelectPlan('annual')}
+                    className="px-3 py-1.5 rounded-lg bg-[#232a34] hover:bg-[#2e353f] text-[#e0fdff] text-xs font-medium"
                   >
-                    One Time (41.99 EUR)
+                    1 an (100 €)
                   </button>
                 </div>
               </div>

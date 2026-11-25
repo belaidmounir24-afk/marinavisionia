@@ -3,18 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>MarineVision AI — Golfe de Skikda &amp; Agent MCP</title>
+    <title>Marina Visionnaire — Méditerranée</title>
     <meta
       name="description"
-      content="Console tactique de navigation maritime, sondeur CHIRP, gestion de waypoints CSV/GPX et agent MCP local pour le Golfe de Skikda."
+      content="Application PWA de navigation maritime en Méditerranée : carte tactique, sondeur CHIRP, capture GPS et partage en Mode Invité."
     />
-    <meta property="og:title" content="MarineVision AI — Golfe de Skikda &amp; Agent MCP" />
+    <meta property="og:title" content="Marina Visionnaire — Méditerranée" />
     <meta
       property="og:description"
-      content="Console tactique de navigation maritime, sondeur CHIRP, gestion de waypoints CSV/GPX et agent MCP local pour le Golfe de Skikda."
+      content="Application PWA de navigation maritime en Méditerranée : carte tactique, sondeur CHIRP, capture GPS et partage en Mode Invité."
     />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#0d141d" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="MarinaVision" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/pwa-192x192.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -25,6 +34,66 @@
   <body class="bg-[#0d141d] text-[#dce3f0] antialiased selection:bg-[#00f2fe] selection:text-[#002022]">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      (function () {
+        if (!('serviceWorker' in navigator)) return;
+        var refreshing = false;
+        var hadController = !!navigator.serviceWorker.controller;
+
+        navigator.serviceWorker.addEventListener('controllerchange', function () {
+          window.dispatchEvent(new CustomEvent('marinevision-sw-event', { detail: { type: 'controllerchange' } }));
+          if (hadController && !refreshing) {
+            refreshing = true;
+            window.location.reload();
+          }
+        });
+
+        window.addEventListener('load', function () {
+          navigator.serviceWorker
+            .register('/service-worker.js', { scope: '/', updateViaCache: 'none' })
+            .then(function (registration) {
+              window.__marineSwRegistration = registration;
+              window.dispatchEvent(
+                new CustomEvent('marinevision-sw-event', {
+                  detail: { type: 'registered', scope: registration.scope },
+                })
+              );
+
+              // Verification immediate au chargement puis toutes les 60s et au retour premier plan Android
+              registration.update().catch(function () {});
+
+              registration.addEventListener('updatefound', function () {
+                var newWorker = registration.installing;
+                if (!newWorker) return;
+                newWorker.addEventListener('statechange', function () {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    newWorker.postMessage({ type: 'SKIP_WAITING' });
+                    window.dispatchEvent(
+                      new CustomEvent('marinevision-sw-event', { detail: { type: 'updatefound' } })
+                    );
+                  }
+                });
+              });
+
+              document.addEventListener('visibilitychange', function () {
+                if (document.visibilityState === 'visible') {
+                  registration.update().catch(function () {});
+                }
+              });
+
+              window.setInterval(function () {
+                registration.update().catch(function () {});
+              }, 60000);
+            })
+            .catch(function (err) {
+              window.dispatchEvent(
+                new CustomEvent('marinevision-sw-event', {
+                  detail: { type: 'error', message: err && err.message ? err.message : 'SW error' },
+                })
+              );
+            });
+        });
+      })();
+    </script>
   </body>
 </html>
-

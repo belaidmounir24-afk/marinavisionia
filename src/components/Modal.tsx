@@ -31,23 +31,23 @@ export const Modal: React.FC<ModalProps> = ({ open, title, onClose, children, fo
       aria-modal="true"
       aria-labelledby="modal-heading"
     >
-      <div className="w-full max-w-md bg-[#19202a] border border-[#3a494b]/70 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#3a494b]/50 bg-[#151c25]">
-          <h3 id="modal-heading" className="text-base font-semibold text-[#e0fdff] truncate">
+      <div className="w-full max-w-lg bg-[#19202a] border border-[#3a494b]/70 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90dvh]">
+        <div className="flex items-start justify-between gap-3 px-4 sm:px-5 py-3.5 sm:py-4 border-b border-[#3a494b]/50 bg-[#151c25]">
+          <h3 id="modal-heading" className="text-sm sm:text-base font-semibold text-[#e0fdff] leading-snug break-words">
             {title}
           </h3>
           <button
             type="button"
             onClick={onClose}
             aria-label="Fermer la fenêtre"
-            className="w-8 h-8 rounded-lg bg-[#232a34] hover:bg-[#2e353f] flex items-center justify-center text-[#9eb2b8] hover:text-[#e0fdff] transition-colors"
+            className="w-8 h-8 rounded-lg bg-[#232a34] hover:bg-[#2e353f] flex items-center justify-center text-[#9eb2b8] hover:text-[#e0fdff] transition-colors shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="p-5 overflow-y-auto space-y-3">{children}</div>
+        <div className="p-4 sm:p-5 overflow-y-auto space-y-3">{children}</div>
         {footer && (
-          <div className="px-5 py-3.5 border-t border-[#3a494b]/50 bg-[#151c25] flex items-center justify-end gap-2">
+          <div className="px-4 sm:px-5 py-3.5 border-t border-[#3a494b]/50 bg-[#151c25] flex flex-wrap items-center justify-end gap-2">
             {footer}
           </div>
         )}

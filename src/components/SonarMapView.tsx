@@ -3,6 +3,7 @@ import {
   Crosshair,
   Fish,
   Layers,
+  MapPin,
   MapPinPlus,
   Cpu,
   Ruler,
@@ -14,8 +15,16 @@ import {
   Radio,
   Satellite,
 } from 'lucide-react';
-import { GeofenceConfig, GnssNmeaConfig, TelemetryState, TrackPoint, Waypoint } from '../types/marine';
-import { projectLatLonToSvg } from '../utils/navigation';
+import {
+  GeofenceConfig,
+  GnssNmeaConfig,
+  NavigationZoneConfig,
+  SavedPlaceRecord,
+  TelemetryState,
+  TrackPoint,
+  Waypoint,
+} from '../types/marine';
+import { NAVIGATION_ZONES, projectLatLonToSvg } from '../utils/navigation';
 
 export interface ActiveScanArea {
   lat: number;
@@ -28,6 +37,7 @@ export interface ActiveScanArea {
 interface SonarMapViewProps {
   telemetry: TelemetryState;
   waypoints: Waypoint[];
+  savedPlaces: SavedPlaceRecord[];
   trackMemoire: TrackPoint[];
   activeWaypointId: string;
   overlayMode: string;
@@ -38,6 +48,10 @@ interface SonarMapViewProps {
   activeScanArea: ActiveScanArea | null;
   geofence: GeofenceConfig;
   gnssNmea: GnssNmeaConfig;
+  activeZone?: NavigationZoneConfig;
+  isAdmin?: boolean;
+  isCapturingPosition?: boolean;
+  onSaveCurrentPosition: () => void;
   onToggleFishVisible: () => void;
   onToggleAiTransitSleep: () => void;
   onGnssSync: () => void;
@@ -60,6 +74,7 @@ const MAP_MODES = [
 export const SonarMapView: React.FC<SonarMapViewProps> = ({
   telemetry,
   waypoints,
+  savedPlaces,
   trackMemoire,
   activeWaypointId,
   overlayMode,
@@ -70,6 +85,10 @@ export const SonarMapView: React.FC<SonarMapViewProps> = ({
   activeScanArea,
   geofence,
   gnssNmea,
+  activeZone = NAVIGATION_ZONES[0],
+  isAdmin = true,
+  isCapturingPosition = false,
+  onSaveCurrentPosition,
   onToggleFishVisible,
   onToggleAiTransitSleep,
   onGnssSync,
@@ -185,12 +204,12 @@ export const SonarMapView: React.FC<SonarMapViewProps> = ({
 
   const gnssDriftTransform = telemetry.gnssSynced ? 'translate(0, 0)' : 'translate(10, -7)';
 
-  const geofencePos = projectLatLonToSvg(geofence.lat, geofence.lon);
+  const geofencePos = projectLatLonToSvg(geofence.lat, geofence.lon, activeZone);
   const geofenceSvgRadius = Math.max(18, Math.min(65, (geofence.radius_m / 800) * 32));
 
   const scanPos = activeScanArea
-    ? projectLatLonToSvg(activeScanArea.lat, activeScanArea.lon)
-    : projectLatLonToSvg(36.9045, 6.886);
+    ? projectLatLonToSvg(activeScanArea.lat, activeScanArea.lon, activeZone)
+    : projectLatLonToSvg(activeZone.centerLat, activeZone.centerLon, activeZone);
   const scanSvgRadius = Math.max(
     20,
     Math.min(72, ((activeScanArea?.radiusM ?? scanRadiusM) / 500) * 28)
@@ -198,7 +217,7 @@ export const SonarMapView: React.FC<SonarMapViewProps> = ({
 
   const trackPointsSvg = trackMemoire
     .map((pt) => {
-      const { x, y } = projectLatLonToSvg(pt.lat, pt.lon);
+      const { x, y } = projectLatLonToSvg(pt.lat, pt.lon, activeZone);
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     })
     .join(' ');
@@ -254,18 +273,20 @@ export const SonarMapView: React.FC<SonarMapViewProps> = ({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onGnssSync}
-            className={`px-3 py-1.5 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
-              telemetry.gnssSynced
-                ? 'bg-[#19202a] border border-[#40dcca]/50 text-[#40dcca]'
-                : 'bg-[#ffba38] hover:bg-[#ffd491] text-[#002022]'
-            }`}
-          >
-            <LocateFixed className="w-3.5 h-3.5" />
-            <span>{telemetry.gnssSynced ? 'GNSS Stora Sync OK' : '/gnss_sync (Stora)'}</span>
-          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={onGnssSync}
+              className={`px-3 py-1.5 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap ${
+                telemetry.gnssSynced
+                  ? 'bg-[#19202a] border border-[#40dcca]/50 text-[#40dcca]'
+                  : 'bg-[#ffba38] hover:bg-[#ffd491] text-[#002022]'
+              }`}
+            >
+              <LocateFixed className="w-3.5 h-3.5" />
+              <span>{telemetry.gnssSynced ? 'GNSS Stora Sync OK' : '/gnss_sync (Stora)'}</span>
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-6">
@@ -281,12 +302,14 @@ export const SonarMapView: React.FC<SonarMapViewProps> = ({
               {String(telemetry.cog).padStart(3, '0')}°
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-[11px] font-mono text-[#9eb2b8]">visionia_memoire</div>
-            <div className="text-xs font-mono font-semibold text-[#e0fdff] tabular-nums">
-              {trackMemoire.length} pts ({overlayMode})
+          {isAdmin && (
+            <div className="text-right">
+              <div className="text-[11px] font-mono text-[#9eb2b8]">visionia_memoire</div>
+              <div className="text-xs font-mono font-semibold text-[#e0fdff] tabular-nums">
+                {trackMemoire.length} pts ({overlayMode})
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -416,7 +439,7 @@ export const SonarMapView: React.FC<SonarMapViewProps> = ({
                 strokeWidth="1.2"
               />
               <text className="font-mono text-[9px]" fill="#00f2fe" opacity="0.85" x="170" y="204">
-                40m (Golfe de Skikda)
+                40m ({activeZone.label})
               </text>
             </g>
 
@@ -516,12 +539,15 @@ export const SonarMapView: React.FC<SonarMapViewProps> = ({
                 </g>
               )}
 
-              {/* Dynamic map_overlay Waypoints */}
+              {/* Dynamic map_overlay Waypoints & Saved Place Pins */}
               <g>
-                {waypoints.map((wp) => {
+                {waypoints
+                  .filter((wp) => (wp.zoneId || 'skikda') === activeZone.id)
+                  .map((wp) => {
                   if (wp.category === 'fish' && !fishVisible) return null;
-                  const { x, y } = projectLatLonToSvg(wp.lat, wp.lon);
+                  const { x, y } = projectLatLonToSvg(wp.lat, wp.lon, activeZone);
                   const isActive = wp.id === activeWaypointId;
+                  const isSavedPin = savedPlaces.some((p) => p.waypointId === wp.id);
                   let color = '#40dcca';
                   if (wp.category === 'fish') color = '#ffba38';
                   else if (wp.category === 'wreck') color = '#00f2fe';
@@ -550,17 +576,34 @@ export const SonarMapView: React.FC<SonarMapViewProps> = ({
                           opacity="0.9"
                         />
                       )}
-                      <circle
-                        cx="0"
-                        cy="0"
-                        r={wp.category === 'fish' ? 6 : 4.5}
-                        fill={color}
-                        fillOpacity="0.32"
-                      />
-                      <circle cx="0" cy="0" r="2.8" fill={color} />
-                      <text x="8" y="3" fill={color} className="font-mono text-[8px] font-bold">
-                        {wp.id} ({wp.depthM}m)
-                      </text>
+                      {isSavedPin ? (
+                        <g transform="translate(0, -2)">
+                          <path
+                            d="M0,-14 C-4.5,-14 -8,-10.5 -8,-6 C-8,-1 0,6 0,6 C0,6 8,-1 8,-6 C8,-10.5 4.5,-14 0,-14 Z"
+                            fill={color}
+                            stroke="#04101c"
+                            strokeWidth="1.4"
+                          />
+                          <circle cx="0" cy="-6" r="2.6" fill="#04101c" />
+                          <text x="10" y="-4" fill="#e0fdff" className="font-sans text-[8.5px] font-bold">
+                            {wp.name}
+                          </text>
+                        </g>
+                      ) : (
+                        <>
+                          <circle
+                            cx="0"
+                            cy="0"
+                            r={wp.category === 'fish' ? 6 : 4.5}
+                            fill={color}
+                            fillOpacity="0.32"
+                          />
+                          <circle cx="0" cy="0" r="2.8" fill={color} />
+                          <text x="8" y="3" fill={color} className="font-mono text-[8px] font-bold">
+                            {wp.name}
+                          </text>
+                        </>
+                      )}
                     </g>
                   );
                 })}
@@ -650,31 +693,35 @@ export const SonarMapView: React.FC<SonarMapViewProps> = ({
               <span>{currentMode.name}</span>
             </button>
 
-            <button
-              type="button"
-              onClick={onToggleFishVisible}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium whitespace-nowrap ${
-                fishVisible
-                  ? 'bg-[#19202a]/90 border-[#40dcca]/50 text-[#e0fdff]'
-                  : 'bg-[#151c25]/90 border-[#3a494b] text-[#9eb2b8]'
-              }`}
-            >
-              <Fish className="w-4 h-4 text-[#ffba38]" />
-              <span>Poissons IA {fishVisible ? 'ON' : 'OFF'}</span>
-            </button>
+            {isAdmin && (
+              <>
+                <button
+                  type="button"
+                  onClick={onToggleFishVisible}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium whitespace-nowrap ${
+                    fishVisible
+                      ? 'bg-[#19202a]/90 border-[#40dcca]/50 text-[#e0fdff]'
+                      : 'bg-[#151c25]/90 border-[#3a494b] text-[#9eb2b8]'
+                  }`}
+                >
+                  <Fish className="w-4 h-4 text-[#ffba38]" />
+                  <span>Poissons IA {fishVisible ? 'ON' : 'OFF'}</span>
+                </button>
 
-            <button
-              type="button"
-              onClick={onToggleAiTransitSleep}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium whitespace-nowrap ${
-                aiTransitSleep
-                  ? 'bg-[#ffba38]/20 border-[#ffba38]/60 text-[#ffd491]'
-                  : 'bg-[#19202a]/90 border-[#3a494b] text-[#9eb2b8] hover:text-[#e0fdff]'
-              }`}
-            >
-              <Power className="w-3.5 h-3.5" />
-              <span>{aiTransitSleep ? 'IA Veille (Transit)' : 'IA Active'}</span>
-            </button>
+                <button
+                  type="button"
+                  onClick={onToggleAiTransitSleep}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium whitespace-nowrap ${
+                    aiTransitSleep
+                      ? 'bg-[#ffba38]/20 border-[#ffba38]/60 text-[#ffd491]'
+                      : 'bg-[#19202a]/90 border-[#3a494b] text-[#9eb2b8] hover:text-[#e0fdff]'
+                  }`}
+                >
+                  <Power className="w-3.5 h-3.5" />
+                  <span>{aiTransitSleep ? 'IA Veille (Transit)' : 'IA Active'}</span>
+                </button>
+              </>
+            )}
 
             <button
               type="button"
@@ -694,7 +741,7 @@ export const SonarMapView: React.FC<SonarMapViewProps> = ({
 
             <button
               type="button"
-              onClick={() => onNotify('Carte recentrée sur le Golfe de Skikda')}
+              onClick={() => onNotify(`Carte recentrée sur ${activeZone.label}`)}
               aria-label="Recentrer sur mon navire"
               className="w-10 h-10 rounded-lg bg-[#19202a]/90 hover:bg-[#232a34] border border-[#3a494b] flex items-center justify-center text-[#00f2fe]"
             >
@@ -702,8 +749,21 @@ export const SonarMapView: React.FC<SonarMapViewProps> = ({
             </button>
           </div>
 
-          <div className="absolute bottom-3 left-3 z-20 px-2.5 py-1 rounded bg-[#080f18]/85 border border-[#3a494b]/50 font-mono text-[11px] text-[#9eb2b8] pointer-events-none">
-            Stora · Port de Skikda · Cap de Fer
+          <div className="absolute bottom-3 left-3 right-3 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+            <div className="px-2.5 py-1 rounded bg-[#080f18]/85 border border-[#3a494b]/50 font-mono text-[11px] text-[#9eb2b8]">
+              {activeZone.label} · {activeZone.subtitle}
+            </div>
+            <button
+              type="button"
+              onClick={onSaveCurrentPosition}
+              disabled={isCapturingPosition}
+              className="pointer-events-auto px-4 py-2.5 rounded-lg bg-[#00f2fe] hover:bg-[#6ff6ff] disabled:opacity-70 text-[#002022] text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-[#00f2fe]/25 transition-colors whitespace-nowrap"
+            >
+              <MapPin className="w-4 h-4" />
+              <span>
+                {isCapturingPosition ? 'Capture GPS...' : 'Enregistrer ma position'}
+              </span>
+            </button>
           </div>
         </section>
 
@@ -767,24 +827,26 @@ export const SonarMapView: React.FC<SonarMapViewProps> = ({
             </span>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={onCreateWaypoint}
-              className="h-11 px-4 rounded-lg bg-[#232a34] hover:bg-[#2e353f] border border-[#3a494b] text-[#e0fdff] text-xs font-semibold flex items-center justify-center gap-2 whitespace-nowrap transition-colors"
-            >
-              <MapPinPlus className="w-4 h-4 text-[#40dcca]" />
-              <span>Créer Waypoint</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setScanResult(onScanAreaOllama(scanRadiusM))}
-              className="h-11 px-4 rounded-lg bg-[#00f2fe] hover:bg-[#6ff6ff] text-[#002022] text-xs font-semibold flex items-center justify-center gap-2 whitespace-nowrap transition-colors"
-            >
-              <Cpu className="w-4 h-4" />
-              <span>Scan IA ({scanRadiusM}m)</span>
-            </button>
-          </div>
+          {isAdmin && (
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={onCreateWaypoint}
+                className="h-11 px-4 rounded-lg bg-[#232a34] hover:bg-[#2e353f] border border-[#3a494b] text-[#e0fdff] text-xs font-semibold flex items-center justify-center gap-2 whitespace-nowrap transition-colors"
+              >
+                <MapPinPlus className="w-4 h-4 text-[#40dcca]" />
+                <span>Créer Waypoint</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setScanResult(onScanAreaOllama(scanRadiusM))}
+                className="h-11 px-4 rounded-lg bg-[#00f2fe] hover:bg-[#6ff6ff] text-[#002022] text-xs font-semibold flex items-center justify-center gap-2 whitespace-nowrap transition-colors"
+              >
+                <Cpu className="w-4 h-4" />
+                <span>Scan IA ({scanRadiusM}m)</span>
+              </button>
+            </div>
+          )}
         </section>
       </div>
     </div>

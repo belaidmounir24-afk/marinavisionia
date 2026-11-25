@@ -1,12 +1,63 @@
 export type TabId = 'dashboard-bento' | 'carte-sonar' | 'waypoints-nav' | 'agent-mcp-config';
 
+export type NavigationZoneId =
+  | 'skikda'
+  | 'mediterranee'
+  | 'cote_dazur'
+  | 'calanques_marseille'
+  | 'la_maddalena'
+  | 'iles_lavezzi'
+  | 'cap_bon'
+  | 'iles_kornati'
+  | 'costa_brava'
+  | 'al_hoceima';
+
+export interface NavigationZoneConfig {
+  id: NavigationZoneId;
+  label: string;
+  subtitle: string;
+  centerLat: number;
+  centerLon: number;
+  bounds: {
+    minLat: number;
+    maxLat: number;
+    minLon: number;
+    maxLon: number;
+  };
+}
+
+export interface LieuxNavigationUiConfig {
+  dynamic_selector: boolean;
+  selected_zone: NavigationZoneId;
+  available_zones: NavigationZoneConfig[];
+  quick_gps_capture: {
+    enabled: boolean;
+    button_label: string;
+    card_title: string;
+    card_cta: string;
+  };
+  manual_entry: {
+    enabled: boolean;
+    button_label: string;
+    fields: Array<'name' | 'lat' | 'lon' | 'depth' | 'category'>;
+    tooltip: string;
+  };
+}
+
 export type WaypointCategory = 'fish' | 'wreck' | 'anchor' | 'restricted';
 
 export type NmeaBaudRate = 4800 | 38400;
 
 export type AndroidLocationPermission = 'always' | 'while_using' | 'denied';
 
-export type SubscriptionTier = 'free' | 'one_time' | 'yearly' | 'weekly';
+export type SubscriptionTier =
+  | 'free'
+  | 'monthly'
+  | 'quarterly'
+  | 'annual'
+  | 'one_time'
+  | 'yearly'
+  | 'weekly';
 
 export type MarineFeatureKey =
   | 'ais_stream'
@@ -14,11 +65,13 @@ export type MarineFeatureKey =
   | 'bathymetry_3d'
   | 'ollama_ai_scan'
   | 'nmea_bridge'
-  | 'excel_auto_log';
+  | 'excel_auto_log'
+  | 'collision_ai_alerts'
+  | 'unlimited_history';
 
 export interface PricingPlanConfig {
-  id: 'one_time' | 'yearly' | 'weekly';
-  label: 'One Time' | 'Yearly' | 'Weekly';
+  id: 'monthly' | 'quarterly' | 'annual' | 'one_time' | 'yearly' | 'weekly';
+  label: string;
   price_eur: number;
   billing_cycle: string;
 }
@@ -61,6 +114,8 @@ export interface Waypoint {
   coords: string;
   aiDetected: boolean;
   confidence: number;
+  zoneId?: NavigationZoneId;
+  isManual?: boolean;
 }
 
 export interface TrackPoint {
@@ -79,8 +134,20 @@ export interface McpPointSummary {
   name: string;
   lat: number;
   long: number;
+  gps?: {
+    lat: number;
+    lon: number;
+    datum: 'WGS84';
+  };
   depth: number;
   type: string;
+}
+
+export interface ProjectContactConfig {
+  organization: string;
+  phone: string;
+  email: string;
+  region: string;
 }
 
 export interface GeofenceConfig {
@@ -123,8 +190,88 @@ export interface MarineGpsTrackerConfig {
   bathymetry_isobaths_m: number[];
 }
 
+export interface PwaDeployConfig {
+  github_repo: string;
+  github_branch: string;
+  netlify_site: string;
+  netlify_auto_publish: boolean;
+  sw_strategy: 'Network-First';
+  skip_waiting: boolean;
+  anti_cache_headers: boolean;
+  permissions_policy: Array<'geolocation' | 'camera' | 'gyroscope' | 'magnetometer'>;
+  last_deploy_at: string;
+}
+
+export interface SavedPlaceRecord {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  accuracyM?: number;
+  category: WaypointCategory;
+  source: 'navigator.geolocation' | 'gnss_fallback';
+  createdAt: string;
+  waypointId: string;
+}
+
+export interface MemoireDecision {
+  id: string;
+  note: string;
+  timestamp: string;
+}
+
+export interface PointInteretMed {
+  id: string;
+  nom: string;
+  secteur: string;
+  bassin?: string;
+  pays?: string;
+  lat: number;
+  lon: number;
+  rayon_m: number;
+  type: 'mouillage' | 'peche' | 'danger' | 'port';
+  alerte_collision_ia: boolean;
+  source_nmea?: string;
+  tags?: string[];
+  rag_indexed?: boolean;
+}
+
+export interface RagIndexEntry {
+  doc_id: string;
+  title: string;
+  secteur: string;
+  bassin: string;
+  lat: number;
+  lon: number;
+  keywords: string[];
+  indexed_at: string;
+}
+
+export interface LocalRagIndex {
+  schema: string;
+  app_brand: 'MarineVision Méditerranée';
+  total_docs: number;
+  last_indexed_at: string;
+  entries: RagIndexEntry[];
+}
+
+export interface ManualLicenseRecord {
+  code: string;
+  tier: Exclude<SubscriptionTier, 'free'>;
+  provider: 'Manuel' | 'Stripe' | 'PayPal';
+  status: 'active' | 'none';
+  activatedAt: string;
+  storedIn: 'visionia_memoire';
+}
+
 export interface McpConfig {
+  app_brand?: string;
+  project_contact?: ProjectContactConfig;
   region: string;
+  active_zone_id?: NavigationZoneId;
+  lieux_navigation_ui?: LieuxNavigationUiConfig;
+  rag_index?: LocalRagIndex;
+  pwa_deploy: PwaDeployConfig;
   marine_tools_config: MarineToolsConfig;
   MARINE_GPS_TRACKER: MarineGpsTrackerConfig;
   mcp_agent: {
@@ -143,6 +290,9 @@ export interface McpConfig {
   geofence: GeofenceConfig;
   gnss_nmea: GnssNmeaConfig;
   points_navigation: McpPointSummary[];
+  points_interet?: PointInteretMed[];
+  saved_places?: SavedPlaceRecord[];
+  memoire_decisions?: MemoireDecision[];
 }
 
 export interface McpLogEntry {
