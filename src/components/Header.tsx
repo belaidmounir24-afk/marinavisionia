@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Compass, LayoutGrid, QrCode, Radar, Share2, SlidersHorizontal, UserCheck } from 'lucide-react';
 import { TabId } from '../types/marine';
 import { PWAInstallButton } from './PWAInstallButton';
@@ -8,6 +8,7 @@ interface HeaderProps {
   isAdmin: boolean;
   onSelectTab: (tab: TabId) => void;
   onOpenProfile: () => void;
+  onSecretAdminTrigger: () => void;
   onShareApp: () => void;
   onOpenQrShare: () => void;
 }
@@ -23,19 +24,40 @@ export const Header: React.FC<HeaderProps> = ({
   isAdmin,
   onSelectTab,
   onOpenProfile,
+  onSecretAdminTrigger,
   onShareApp,
   onOpenQrShare,
 }) => {
   const isSettingsActive = activeTab === 'agent-mcp-config';
+  const clickCountRef = useRef(0);
+  const clickTimerRef = useRef<number | null>(null);
+
+  const handleBrandClick = () => {
+    onSelectTab('dashboard-bento');
+    clickCountRef.current += 1;
+    if (clickTimerRef.current !== null) {
+      window.clearTimeout(clickTimerRef.current);
+    }
+    if (clickCountRef.current >= 5) {
+      clickCountRef.current = 0;
+      clickTimerRef.current = null;
+      onSecretAdminTrigger();
+      return;
+    }
+    clickTimerRef.current = window.setTimeout(() => {
+      clickCountRef.current = 0;
+      clickTimerRef.current = null;
+    }, 2500);
+  };
 
   return (
     <>
       <header className="fixed top-0 inset-x-0 z-40 min-h-16 bg-[#080f18]/95 backdrop-blur-xl border-b border-[#3a494b]/40">
         <div className="max-w-6xl mx-auto min-h-16 px-3 sm:px-6 py-2 md:py-0 flex flex-wrap items-center justify-between gap-2 sm:gap-4">
-          {/* Zone 1: Brand wordmark */}
+          {/* Zone 1: Brand wordmark (silent 5-click trigger for Admin PIN modal) */}
           <button
             type="button"
-            onClick={() => onSelectTab('dashboard-bento')}
+            onClick={handleBrandClick}
             className="flex items-center gap-2 sm:gap-2.5 min-w-0 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#00f2fe] rounded-lg"
           >
             <span className="h-8 w-8 rounded-lg bg-[#0C1B30] border border-[#00f2fe]/40 overflow-hidden flex items-center justify-center shrink-0">

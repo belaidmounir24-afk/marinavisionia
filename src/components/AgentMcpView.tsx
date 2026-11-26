@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   Activity,
   AlertTriangle,
+  Camera,
   Compass,
   Copy,
   Cpu,
@@ -67,6 +68,7 @@ import {
   VESSEL_LAT,
   VESSEL_LON,
 } from '../utils/navigation';
+import { CaptureCodePanel } from './CaptureCodePanel';
 import { PwaDeployPanel } from './PwaDeployPanel';
 
 interface AgentMcpViewProps {
@@ -81,6 +83,8 @@ interface AgentMcpViewProps {
   pointsInteret: PointInteretMed[];
   ragIndex: LocalRagIndex;
   isAdmin: boolean;
+  adminToken: string | null;
+  focusCaptureSignal?: number;
   onToggleAdminMode: (nextAdmin: boolean) => void;
   onShareApp: (guestMode?: boolean) => void;
   onOpenQrShare: (guestMode?: boolean) => void;
@@ -133,6 +137,7 @@ interface AgentMcpViewProps {
 }
 
 const PRESET_COMMANDS = [
+  '/capture',
   '/set_mode --guest',
   '/share_app',
   '/gen_qrcode',
@@ -155,6 +160,8 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
   pointsInteret,
   ragIndex,
   isAdmin,
+  adminToken,
+  focusCaptureSignal,
   onToggleAdminMode,
   onShareApp,
   onOpenQrShare,
@@ -206,6 +213,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
     '/set_mode --guest'
   );
   const [actionGuideTab, setActionGuideTab] = useState<
+    | 'capture'
     | 'distribution'
     | 'synthese'
     | 'mediterranee-db'
@@ -218,7 +226,15 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
     | 'gps-l5'
     | 'gnss'
     | 'skikda'
-  >('distribution');
+  >('capture');
+
+  React.useEffect(() => {
+    if (!focusCaptureSignal) return;
+    setActionGuideTab('capture');
+    window.setTimeout(() => {
+      document.getElementById('capture-ia-panel')?.scrollIntoView({ behavior: 'smooth' });
+    }, 80);
+  }, [focusCaptureSignal]);
   const [licenseInput, setLicenseInput] = useState(manualLicense.code || 'MV-1Y-2026');
   const [nmeaPortInput, setNmeaPortInput] = useState(config.gnss_nmea.nmea_port);
   const [nmeaBaudInput, setNmeaBaudInput] = useState<NmeaBaudRate>(config.gnss_nmea.baudrate);
@@ -347,6 +363,17 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs font-medium text-[#9eb2b8]">Actions MCP recommandées</span>
                 <div className="flex flex-wrap items-center gap-1 bg-[#080f18] p-0.5 rounded-lg border border-[#3a494b]/50">
+                  <button
+                    type="button"
+                    onClick={() => setActionGuideTab('capture')}
+                    className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                      actionGuideTab === 'capture'
+                        ? 'bg-[#00f2fe] text-[#002022] font-semibold'
+                        : 'text-[#9eb2b8] hover:text-[#e0fdff]'
+                    }`}
+                  >
+                    Capture IA (/capture)
+                  </button>
                   <button
                     type="button"
                     onClick={() => setActionGuideTab('distribution')}
@@ -482,7 +509,49 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                 </div>
               </div>
 
-              {actionGuideTab === 'distribution' ? (
+              {actionGuideTab === 'capture' ? (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      document
+                        .getElementById('capture-ia-panel')
+                        ?.scrollIntoView({ behavior: 'smooth' })
+                    }
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#00f2fe]/45 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#00f2fe]">
+                        Priorité haute · 1. Réceptionner le code (/capture OCR ou copier-coller)
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        Bouton Mode Admin + &lt;script&gt; POI → transcription photo ou collage brut
+                      </div>
+                    </div>
+                    <Camera className="w-4 h-4 text-[#00f2fe] shrink-0" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      document
+                        .getElementById('capture-ia-panel')
+                        ?.scrollIntoView({ behavior: 'smooth' })
+                    }
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#40dcca]/45 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#40dcca]">
+                        Priorité haute · 2. Injecter protection (5 clics + PIN serveur) &amp; séparer Client/Admin
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        Génère client-guest.html, admin-gate-security.js et admin-poi-module.js
+                      </div>
+                    </div>
+                    <ShieldCheck className="w-4 h-4 text-[#40dcca] shrink-0" />
+                  </button>
+                </div>
+              ) : actionGuideTab === 'distribution' ? (
                 <div className="space-y-2">
                   <button
                     type="button"
@@ -2239,8 +2308,10 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
           </section>
         </div>
 
-        {/* Right: PWA Deploy Panel, visionia_optimization.json & Streaming Event Log */}
+        {/* Right: Capture IA (/capture), PWA Deploy Panel, visionia_optimization.json & Streaming Event Log */}
         <div className="lg:col-span-6 space-y-5">
+          <CaptureCodePanel adminToken={adminToken} onNotify={onNotify} onLog={onLog} />
+
           <PwaDeployPanel
             pwaDeploy={config.pwa_deploy}
             onUpdatePwaDeploy={onUpdatePwaDeploy}

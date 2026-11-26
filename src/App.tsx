@@ -1,5 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bot, CheckCircle2, Copy, Download, MapPin, QrCode, Share2, Shield, UserCheck } from 'lucide-react';
+import {
+  Bot,
+  Camera,
+  CheckCircle2,
+  Copy,
+  Download,
+  KeyRound,
+  Lock,
+  MapPin,
+  QrCode,
+  Share2,
+  Shield,
+  UserCheck,
+} from 'lucide-react';
 import { AgentMcpView } from './components/AgentMcpView';
 import { BentoDashboard } from './components/BentoDashboard';
 import { Header } from './components/Header';
@@ -74,30 +87,6 @@ const STORAGE_KEY = 'marinevision_skikda_v2';
 const TRACK_MEMOIRE_KEY = 'visionia_memoire';
 const LICENSE_MEMOIRE_KEY = 'visionia_memoire_license';
 const RAG_MEMOIRE_KEY = 'visionia_memoire_rag';
-const IS_ADMIN_STORAGE_KEY = 'marina_visionnaire_is_admin';
-
-function resolveInitialIsAdmin(): boolean {
-  if (typeof window !== 'undefined') {
-    const params = new URLSearchParams(window.location.search);
-    const mode = params.get('mode')?.toLowerCase();
-    const adminParam = params.get('admin');
-    const guestParam = params.get('guest');
-    if (mode === 'guest' || mode === 'invite' || guestParam === '1' || adminParam === '0') {
-      return false;
-    }
-    if (adminParam === '1' || mode === 'admin') {
-      return true;
-    }
-  }
-  try {
-    const saved = localStorage.getItem(IS_ADMIN_STORAGE_KEY);
-    if (saved === 'false') return false;
-    if (saved === 'true') return true;
-  } catch {
-    // ignore
-  }
-  return true;
-}
 
 interface SavedPersistedState {
   config: McpConfig;
@@ -251,13 +240,21 @@ type ActiveModal =
   | { type: 'history' }
   | { type: 'pdf' }
   | { type: 'profile' }
+  | { type: 'admin-unlock' }
   | { type: 'sync-script' }
   | { type: 'qr-share'; guestMode: boolean };
 
 export default function App() {
   const initialSaved = useMemo(() => loadSavedState(), []);
 
-  const [IS_ADMIN, setIsAdmin] = useState<boolean>(() => resolveInitialIsAdmin());
+  const [adminToken, setAdminToken] = useState<string | null>(null);
+  const IS_ADMIN = Boolean(adminToken);
+  const [adminPinConfigured, setAdminPinConfigured] = useState<boolean>(true);
+  const [adminPinInput, setAdminPinInput] = useState<string>('');
+  const [adminPinConfirmInput, setAdminPinConfirmInput] = useState<string>('');
+  const [adminPinError, setAdminPinError] = useState<string | null>(null);
+  const [adminUnlockBusy, setAdminUnlockBusy] = useState<boolean>(false);
+  const [focusCaptureSignal, setFocusCaptureSignal] = useState<number>(0);
   const [activeTab, setActiveTab] = useState<TabId>('dashboard-bento');
   const [waypoints, setWaypoints] = useState<Waypoint[]>(() =>
     initialSaved?.waypoints?.length ? initialSaved.waypoints : createInitialWaypoints()
@@ -542,36 +539,102 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(IS_ADMIN_STORAGE_KEY, String(IS_ADMIN));
-    } catch {
-      // ignore
-    }
     if (!IS_ADMIN && activeTab === 'agent-mcp-config') {
       setActiveTab('dashboard-bento');
     }
   }, [IS_ADMIN, activeTab]);
 
+  const refreshAdminStatus = useCallback(async () => {
+    try {
+      const resp = await fetch('/api/admin/status');
+      if (resp.ok) {
+        const data = (await resp.json()) as { configured?: boolean };
+        setAdminPinConfigured(Boolean(data.configured));
+      }
+    } catch {
+      // Keep default state if offline
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshAdminStatus();
+  }, [refreshAdminStatus]);
+
+  const handleSecretAdminTrigger = useCallback(() => {
+    if (IS_ADMIN) {
+      setModal({ type: 'profile' });
+      showToast('Mode Admin déjà actif');
+      return;
+    }
+    setAdminPinInput('');
+    setAdminPinConfirmInput('');
+    setAdminPinError(null);
+    void refreshAdminStatus();
+    setModal({ type: 'admin-unlock' });
+  }, [IS_ADMIN, refreshAdminStatus, showToast]);
+
+  const handleSubmitAdminPin = useCallback(async () => {
+    const cleanPin = adminPinInput.trim();
+    if (!/^\d{4,12}$/.test(cleanPin)) {
+      setAdminPinError('Saisissez un code PIN numérique (4 à 12 chiffres).');
+      return;
+    }
+    if (!adminPinConfigured && cleanPin !== adminPinConfirmInput.trim()) {
+      setAdminPinError('Les deux codes PIN saisis ne correspondent pas.');
+      return;
+    }
+
+    setAdminUnlockBusy(true);
+    setAdminPinError(null);
+    try {
+      const endpoint = adminPinConfigured ? '/api/admin/unlock' : '/api/admin/setup';
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: cleanPin }),
+      });
+      const payload = (await resp.json()) as { token?: string; error?: string };
+      if (!resp.ok || !payload.token) {
+        setAdminPinError(payload.error || 'Vérification PIN refusée.');
+        return;
+      }
+      setAdminToken(payload.token);
+      setAdminPinConfigured(true);
+      setAdminPinInput('');
+      setAdminPinConfirmInput('');
+      setModal({ type: 'none' });
+      appendLog(
+        'ARCHITECTURE',
+        'Admin Gate',
+        'Session Administrateur déverrouillée après vérification PIN serveur'
+      );
+      showToast('Mode Admin déverrouillé (Passerelle, MCP & /capture actifs)');
+    } catch {
+      setAdminPinError('Serveur de vérification inaccessible.');
+    } finally {
+      setAdminUnlockBusy(false);
+    }
+  }, [adminPinInput, adminPinConfirmInput, adminPinConfigured, appendLog, showToast]);
+
   const handleToggleAdminMode = useCallback(
     (nextAdmin: boolean) => {
-      setIsAdmin(nextAdmin);
-      if (!nextAdmin && activeTab === 'agent-mcp-config') {
+      if (nextAdmin) {
+        handleSecretAdminTrigger();
+        return;
+      }
+      void fetch('/api/admin/lock', { method: 'POST' }).catch(() => undefined);
+      setAdminToken(null);
+      if (activeTab === 'agent-mcp-config') {
         setActiveTab('dashboard-bento');
       }
       appendLog(
         'ARCHITECTURE',
-        'IS_ADMIN',
-        nextAdmin
-          ? 'IS_ADMIN = true (Cockpit Admin & Agent MCP activés)'
-          : 'IS_ADMIN = false (Mode Invité activé — interface client épurée)'
+        'Mode Invité',
+        'Session Admin verrouillée — retour au Mode Invité client épuré'
       );
-      showToast(
-        nextAdmin
-          ? 'Mode Admin activé (accès complet Passerelle & MCP)'
-          : 'Mode Invité activé (interface client épurée)'
-      );
+      showToast('Mode Invité activé (interface client épurée)');
     },
-    [activeTab, appendLog, showToast]
+    [activeTab, appendLog, handleSecretAdminTrigger, showToast]
   );
 
   const partagerApp = useCallback(
@@ -1488,6 +1551,18 @@ export default function App() {
       const cmd = String(rawCmd || '').trim();
       if (!cmd) return;
 
+      if (cmd.startsWith('/capture')) {
+        if (!IS_ADMIN) {
+          handleSecretAdminTrigger();
+          return;
+        }
+        setActiveTab('agent-mcp-config');
+        setFocusCaptureSignal((prev) => prev + 1);
+        appendLog('CAPTURE IA', '/capture', 'Module Capture IA (/capture) ouvert');
+        showToast('Module Capture IA (/capture) ouvert');
+        return;
+      }
+
       if (cmd.startsWith('/set_mode')) {
         const wantAdmin = /--admin/i.test(cmd);
         handleToggleAdminMode(wantAdmin);
@@ -1821,6 +1896,8 @@ export default function App() {
       activeZone.centerLat,
       activeZone.centerLon,
       activeZone.id,
+      IS_ADMIN,
+      handleSecretAdminTrigger,
       handleToggleAdminMode,
       partagerApp,
       handleOpenQrShare,
@@ -2130,6 +2207,7 @@ export default function App() {
         isAdmin={IS_ADMIN}
         onSelectTab={setActiveTab}
         onOpenProfile={() => setModal({ type: 'profile' })}
+        onSecretAdminTrigger={handleSecretAdminTrigger}
         onShareApp={() => void partagerApp(true)}
         onOpenQrShare={() => handleOpenQrShare(true)}
       />
@@ -2259,6 +2337,8 @@ export default function App() {
             pointsInteret={pointsInteret}
             ragIndex={ragIndex}
             isAdmin={IS_ADMIN}
+            adminToken={adminToken}
+            focusCaptureSignal={focusCaptureSignal}
             onToggleAdminMode={handleToggleAdminMode}
             onShareApp={(guest = true) => void partagerApp(guest)}
             onOpenQrShare={(guest = true) => handleOpenQrShare(guest)}
@@ -2482,9 +2562,13 @@ export default function App() {
                           ? 'Script Sync Auto → donnees_visionia.xlsx'
                           : modal.type === 'qr-share'
                             ? 'Distribuer Marina Visionnaire (QR Code & PWA)'
-                            : IS_ADMIN
-                              ? 'Passerelle Méditerranéenne — Paramètres'
-                              : 'Marina Visionnaire — Mode Invité'
+                            : modal.type === 'admin-unlock'
+                              ? adminPinConfigured
+                                ? 'Déverrouillage Mode Admin'
+                                : 'Initialiser le Code PIN Admin'
+                              : IS_ADMIN
+                                ? 'Passerelle Méditerranéenne — Paramètres'
+                                : 'Marina Visionnaire — Mode Invité'
         }
         onClose={() => setModal({ type: 'none' })}
         footer={
@@ -2649,6 +2733,31 @@ export default function App() {
                 className="px-4 py-2 rounded-lg bg-[#00f2fe] text-[#002022] text-xs font-semibold"
               >
                 Exporter .xlsx
+              </button>
+            </>
+          ) : modal.type === 'admin-unlock' ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setModal({ type: 'none' })}
+                className="px-3 py-2 rounded-lg bg-[#232a34] text-[#dce3f0] text-xs"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                disabled={adminUnlockBusy}
+                onClick={() => void handleSubmitAdminPin()}
+                className="px-4 py-2 rounded-lg bg-[#00f2fe] hover:bg-[#6ff6ff] disabled:opacity-50 text-[#002022] text-xs font-bold flex items-center gap-1.5"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                <span>
+                  {adminUnlockBusy
+                    ? 'Vérification...'
+                    : adminPinConfigured
+                      ? 'Déverrouiller'
+                      : 'Enregistrer & Déverrouiller'}
+                </span>
               </button>
             </>
           ) : modal.type === 'profile' ? (
@@ -3057,9 +3166,78 @@ export default function App() {
           />
         )}
 
+        {modal.type === 'admin-unlock' && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleSubmitAdminPin();
+            }}
+            className="space-y-4 text-xs"
+          >
+            <div className="p-3 rounded-lg bg-[#151c25] border border-[#00f2fe]/40 flex items-start gap-2.5">
+              <Lock className="w-4 h-4 text-[#00f2fe] shrink-0 mt-0.5" />
+              <div className="text-[#9eb2b8] leading-relaxed">
+                {adminPinConfigured
+                  ? 'Saisissez le code PIN Administrateur (vérifié côté serveur) pour activer Passerelle Méditerranéenne, Agent MCP et le module Capture IA (/capture).'
+                  : 'Premier déverrouillage détecté : définissez le code PIN Administrateur (4 à 12 chiffres) qui protégera cette session.'}
+              </div>
+            </div>
+
+            {adminPinError && (
+              <div className="p-2.5 rounded-lg bg-[#93000a]/30 border border-[#ffb4ab]/40 text-xs text-[#ffb4ab]">
+                {adminPinError}
+              </div>
+            )}
+
+            <div>
+              <label htmlFor="admin-pin-input" className="block text-xs font-medium text-[#e0fdff] mb-1.5">
+                Code PIN Administrateur
+              </label>
+              <input
+                id="admin-pin-input"
+                type="password"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                autoFocus
+                value={adminPinInput}
+                onChange={(e) => {
+                  setAdminPinInput(e.target.value);
+                  setAdminPinError(null);
+                }}
+                placeholder="••••••"
+                className="w-full bg-[#080f18] border border-[#00f2fe]/50 rounded-lg px-3 py-2.5 text-sm font-mono tracking-widest text-[#00f2fe] focus:outline-none focus:border-[#00f2fe]"
+              />
+            </div>
+
+            {!adminPinConfigured && (
+              <div>
+                <label
+                  htmlFor="admin-pin-confirm-input"
+                  className="block text-xs font-medium text-[#e0fdff] mb-1.5"
+                >
+                  Confirmer le code PIN
+                </label>
+                <input
+                  id="admin-pin-confirm-input"
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={adminPinConfirmInput}
+                  onChange={(e) => {
+                    setAdminPinConfirmInput(e.target.value);
+                    setAdminPinError(null);
+                  }}
+                  placeholder="••••••"
+                  className="w-full bg-[#080f18] border border-[#3a494b] rounded-lg px-3 py-2.5 text-sm font-mono tracking-widest text-[#e0fdff] focus:outline-none focus:border-[#00f2fe]"
+                />
+              </div>
+            )}
+          </form>
+        )}
+
         {modal.type === 'profile' && (
           <div className="space-y-3 text-xs">
-            {/* IS_ADMIN / Mode Invité Role Switcher */}
+            {/* Mode Invité / Session Admin Status (no exposed Admin button in Guest UI) */}
             <div className="p-3 rounded-lg bg-[#151c25] border border-[#40dcca]/45 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">
                 {IS_ADMIN ? (
@@ -3069,26 +3247,24 @@ export default function App() {
                 )}
                 <div>
                   <div className="font-semibold text-[#e0fdff]">
-                    {IS_ADMIN ? 'Mode Admin (IS_ADMIN = true)' : 'Mode Invité Client (IS_ADMIN = false)'}
+                    {IS_ADMIN ? 'Mode Admin vérifié' : 'Mode Invité Client'}
                   </div>
                   <div className="text-[11px] text-[#9eb2b8]">
                     {IS_ADMIN
-                      ? 'Consoles MCP, imports/éditions et réglages avancés visibles'
-                      : 'Interface client épurée : consoles et outils d’édition masqués'}
+                      ? 'Passerelle Méditerranéenne, Agent MCP et module Capture IA (/capture) actifs'
+                      : 'Interface client épurée dédiée à la navigation en mer et au partage'}
                   </div>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => handleToggleAdminMode(!IS_ADMIN)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
-                  IS_ADMIN
-                    ? 'bg-[#19202a] hover:bg-[#232a34] border border-[#40dcca]/60 text-[#40dcca]'
-                    : 'bg-[#00f2fe] hover:bg-[#6ff6ff] text-[#002022]'
-                }`}
-              >
-                {IS_ADMIN ? 'Basculer en Mode Invité' : 'Activer Mode Admin'}
-              </button>
+              {IS_ADMIN && (
+                <button
+                  type="button"
+                  onClick={() => handleToggleAdminMode(false)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap bg-[#19202a] hover:bg-[#232a34] border border-[#40dcca]/60 text-[#40dcca]"
+                >
+                  Verrouiller (Mode Invité)
+                </button>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -3111,17 +3287,31 @@ export default function App() {
             </div>
 
             {IS_ADMIN && (
-              <button
-                type="button"
-                onClick={() => {
-                  setModal({ type: 'none' });
-                  setActiveTab('agent-mcp-config');
-                }}
-                className="w-full py-3 px-4 rounded-lg bg-[#00f2fe] hover:bg-[#6ff6ff] text-[#002022] text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-md shadow-[#00f2fe]/15 transition-colors"
-              >
-                <Bot className="w-4 h-4 shrink-0" />
-                <span>Ouvrir Cockpit Complet Agent MCP &amp; Paramètres</span>
-              </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModal({ type: 'none' });
+                    setActiveTab('agent-mcp-config');
+                    setFocusCaptureSignal((prev) => prev + 1);
+                  }}
+                  className="w-full py-3 px-4 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#40dcca]/50 text-[#40dcca] text-xs font-bold flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Camera className="w-4 h-4 shrink-0" />
+                  <span>Module Capture IA (/capture)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModal({ type: 'none' });
+                    setActiveTab('agent-mcp-config');
+                  }}
+                  className="w-full py-3 px-4 rounded-lg bg-[#00f2fe] hover:bg-[#6ff6ff] text-[#002022] text-xs font-bold flex items-center justify-center gap-2 shadow-md shadow-[#00f2fe]/15 transition-colors"
+                >
+                  <Bot className="w-4 h-4 shrink-0" />
+                  <span>Cockpit Agent MCP</span>
+                </button>
+              </div>
             )}
 
             {/* 1. Navigation & Base Méditerranée */}
