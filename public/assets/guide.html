@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Guide Client — MarineVision AI / Marina Visionnaire</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #080f18;
+        --card: #151c25;
+        --card-alt: #19202a;
+        --border: rgba(58, 73, 75, 0.55);
+        --cyan: #00f2fe;
+        --teal: #40dcca;
+        --amber: #ffba38;
+        --text: #e0fdff;
+        --muted: #9eb2b8;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.6;
+        padding: 20px 16px 48px;
+      }
+      .container {
+        max-width: 820px;
+        margin: 0 auto;
+      }
+      header {
+        background: var(--card);
+        border: 1px solid rgba(0, 242, 254, 0.35);
+        border-radius: 16px;
+        padding: 22px;
+        margin-bottom: 20px;
+      }
+      .badge {
+        display: inline-block;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--teal);
+        background: rgba(64, 220, 202, 0.12);
+        border: 1px solid rgba(64, 220, 202, 0.35);
+        border-radius: 6px;
+        padding: 3px 9px;
+        margin-bottom: 10px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 24px;
+        line-height: 1.25;
+        color: var(--text);
+      }
+      .subtitle {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      section {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 20px;
+        margin-bottom: 16px;
+      }
+      h2 {
+        margin: 0 0 10px;
+        font-size: 17px;
+        color: var(--cyan);
+      }
+      p,
+      li {
+        font-size: 14px;
+        color: #dce3f0;
+      }
+      ul,
+      ol {
+        margin: 8px 0 0;
+        padding-left: 20px;
+      }
+      li + li {
+        margin-top: 6px;
+      }
+      code,
+      pre {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      code {
+        background: var(--bg);
+        color: var(--teal);
+        padding: 2px 6px;
+        border-radius: 5px;
+        font-size: 12px;
+      }
+      pre {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px 14px;
+        overflow-x: auto;
+        font-size: 12px;
+        color: #dce3f0;
+        margin: 10px 0 0;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 12px;
+        margin-top: 12px;
+      }
+      .plan {
+        background: var(--card-alt);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px;
+      }
+      .plan strong {
+        color: var(--amber);
+        display: block;
+        margin-bottom: 4px;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 14px;
+      }
+      .btn {
+        display: inline-block;
+        text-decoration: none;
+        font-weight: 700;
+        font-size: 13px;
+        padding: 9px 14px;
+        border-radius: 9px;
+      }
+      .btn-primary {
+        background: var(--cyan);
+        color: #002022;
+      }
+      .btn-secondary {
+        background: var(--card-alt);
+        color: var(--teal);
+        border: 1px solid rgba(64, 220, 202, 0.45);
+      }
+      footer {
+        text-align: center;
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 24px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <header>
+        <span class="badge">GUIDE CLIENT · MARINEVISION AI</span>
+        <h1>Bienvenue sur Marina Visionnaire</h1>
+        <p class="subtitle">
+          Guide pratique pour la navigation côtière en Méditerranée, l&apos;activation du Mode
+          Premium, la gestion des points GPS (<code>data_points.json</code>) et l&apos;édition sur
+          Android (Acode / Spck Editor).
+        </p>
+        <div class="actions">
+          <a class="btn btn-primary" href="/?mode=guest">Ouvrir l&apos;application</a>
+          <a class="btn btn-secondary" href="/data_points.json" target="_blank" rel="noopener noreferrer">
+            Voir data_points.json
+          </a>
+        </div>
+      </header>
+
+      <section>
+        <h2>1. Démarrer en Mode Invité &amp; Activer le Mode Premium</h2>
+        <ol>
+          <li>
+            Ouvrez l&apos;application sur votre téléphone Android ou navigateur. Par défaut,
+            l&apos;interface s&apos;ouvre en <strong>Mode Invité</strong> (compas, carte sonar et
+            GPS de base gratuits).
+          </li>
+          <li>
+            Si vous avez reçu un code d&apos;accès temporaire (format <code>MV-XXXX-XX</code>),
+            rendez-vous sur l&apos;onglet <strong>Bento</strong> dans la carte
+            <strong>Abonnement &amp; AISStream</strong>.
+          </li>
+          <li>
+            Saisissez votre code puis appuyez sur <strong>Activer</strong> : le passage en
+            <strong>Mode Premium</strong> et le déverrouillage d&apos;<strong>AISStream</strong>
+            s&apos;effectuent automatiquement.
+          </li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>2. Enregistrer vos Coordonnées GPS &amp; Points d&apos;Intérêt</h2>
+        <ul>
+          <li>
+            <strong>Capture GPS 1-clic</strong> : appuyez sur
+            <em>Enregistrer ma position</em> pour capturer vos coordonnées sans saisie manuelle.
+          </li>
+          <li>
+            <strong>Saisie manuelle ou JSON</strong> : chaque point enregistré respecte le format
+            modulaire <code>data_points.json</code> (<code>nom</code>, <code>region</code>,
+            <code>lat</code>, <code>lon</code>, <code>note</code>) et reste mémorisé dans
+            <code>visionia_memoire</code>.
+          </li>
+        </ul>
+        <pre>{
+  "nom": "Île Srigina",
+  "region": "Golfe de Skikda",
+  "lat": 36.9355,
+  "lon": 6.8902,
+  "note": "Phare et passe nord-ouest, fond rocheux 18-32 m"
+}</pre>
+      </section>
+
+      <section>
+        <h2>3. Installation PWA sur Android (Mode Hors-Ligne)</h2>
+        <ol>
+          <li>Ouvrez Marina Visionnaire dans <strong>Google Chrome</strong> sur Android.</li>
+          <li>Appuyez sur le bouton <strong>Installer l&apos;app</strong> ou sur le menu ⋮ → <em>Ajouter à l&apos;écran d&apos;accueil</em>.</li>
+          <li>Le Service Worker conserve la carte et vos repères accessibles même sans réseau en mer.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>4. Édition Modulaire sur Android (Acode / Spck Editor)</h2>
+        <p>
+          Si vous travaillez depuis un dossier décompressé sur Android avec <strong>Acode</strong>
+          ou <strong>Spck Editor</strong> :
+        </p>
+        <ul>
+          <li><code>data_points.json</code> : ajoutez ou modifiez vos points GPS (<code>nom</code>, <code>region</code>, <code>lat</code>, <code>lon</code>, <code>note</code>).</li>
+          <li><code>assets/guide.html</code> : mettez à jour ce guide client à tout moment sans toucher au code principal.</li>
+          <li><code>genererMotDePasse()</code> &amp; <code>genererCodeAcces()</code> : fonctions cryptographiques Web Crypto prêtes à l&apos;emploi dans le contrôleur JS.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>5. Offres &amp; Assistance Directe</h2>
+        <div class="grid">
+          <div class="plan">
+            <strong>1 mois — 20 €</strong>
+            Accès complet AISStream, alertes collision IA et historique illimité.
+          </div>
+          <div class="plan">
+            <strong>3 mois — 50 €</strong>
+            Idéal pour la saison estivale en Méditerranée.
+          </div>
+          <div class="plan">
+            <strong>1 an — 100 €</strong>
+            Licence annuelle complète avec mises à jour PWA continues.
+          </div>
+        </div>
+        <p style="margin-top: 14px">
+          Contact direct : <strong>+213 6 97 29 60 59</strong> ·
+          <strong>belaid.mounir.40@gmail.com</strong>
+        </p>
+      </section>
+
+      <footer>MarineVision AI · Marina Visionnaire Méditerranée · Document autonome hors-ligne</footer>
+    </main>
+  </body>
+</html>

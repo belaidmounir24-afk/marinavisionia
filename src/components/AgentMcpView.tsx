@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   Activity,
   AlertTriangle,
+  BookOpen,
   Camera,
   Compass,
   Copy,
@@ -10,6 +11,7 @@ import {
   Crown,
   Database,
   FileCode2,
+  FileJson,
   FileSpreadsheet,
   FileText,
   Globe,
@@ -49,12 +51,14 @@ import {
   MarineFeatureKey,
   McpConfig,
   McpLogEntry,
+  NavigationZoneId,
   NmeaBaudRate,
   PointInteretMed,
   PwaDeployConfig,
   SubscriptionTier,
   TelemetryState,
   TrackPoint,
+  WaypointCategory,
 } from '../types/marine';
 import {
   getTierLabel,
@@ -68,7 +72,9 @@ import {
   VESSEL_LAT,
   VESSEL_LON,
 } from '../utils/navigation';
+import { AccessCodeManagerPanel } from './AccessCodeManagerPanel';
 import { CaptureCodePanel } from './CaptureCodePanel';
+import { GpsJsonWriterPanel } from './GpsJsonWriterPanel';
 import { PwaDeployPanel } from './PwaDeployPanel';
 
 interface AgentMcpViewProps {
@@ -96,11 +102,21 @@ interface AgentMcpViewProps {
   onExportMarineToolsJson: () => void;
   onExportMedPoisJson: () => void;
   onExportLieuxNavJson: () => void;
+  onExportDataPointsJson: () => void;
+  onOpenGuideClient: () => void;
   onExportPdf: () => void;
   onIndexRagDatabase: () => void;
   onOpenImplScriptModal: (lang: 'javascript' | 'python') => void;
   onOpenNavView: () => void;
   onOpenManualPoint: () => void;
+  onAddManualPoint: (input: {
+    name: string;
+    lat: number;
+    lon: number;
+    depth: number;
+    category: WaypointCategory;
+    zoneId: NavigationZoneId;
+  }) => void;
   onCapturePoiFromGnrmc: () => void;
   onTogglePoiAiAlert: (poiId: string) => void;
   onActivateLicenseCode: (code: string, provider?: 'Manuel' | 'Stripe' | 'PayPal') => void;
@@ -173,11 +189,14 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
   onExportMarineToolsJson,
   onExportMedPoisJson,
   onExportLieuxNavJson,
+  onExportDataPointsJson,
+  onOpenGuideClient,
   onExportPdf,
   onIndexRagDatabase,
   onOpenImplScriptModal,
   onOpenNavView,
   onOpenManualPoint,
+  onAddManualPoint,
   onCapturePoiFromGnrmc,
   onTogglePoiAiAlert,
   onActivateLicenseCode,
@@ -213,7 +232,10 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
     '/set_mode --guest'
   );
   const [actionGuideTab, setActionGuideTab] = useState<
+    | 'structuration'
+    | 'access-codes'
     | 'capture'
+    | 'consolidation'
     | 'distribution'
     | 'synthese'
     | 'mediterranee-db'
@@ -226,7 +248,7 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
     | 'gps-l5'
     | 'gnss'
     | 'skikda'
-  >('capture');
+  >('structuration');
 
   React.useEffect(() => {
     if (!focusCaptureSignal) return;
@@ -365,6 +387,28 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                 <div className="flex flex-wrap items-center gap-1 bg-[#080f18] p-0.5 rounded-lg border border-[#3a494b]/50">
                   <button
                     type="button"
+                    onClick={() => setActionGuideTab('structuration')}
+                    className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                      actionGuideTab === 'structuration'
+                        ? 'bg-[#00f2fe] text-[#002022] font-semibold'
+                        : 'text-[#9eb2b8] hover:text-[#e0fdff]'
+                    }`}
+                  >
+                    Structuration &amp; Android
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActionGuideTab('access-codes')}
+                    className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                      actionGuideTab === 'access-codes'
+                        ? 'bg-[#00f2fe] text-[#002022] font-semibold'
+                        : 'text-[#9eb2b8] hover:text-[#e0fdff]'
+                    }`}
+                  >
+                    Codes Temporaires
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setActionGuideTab('capture')}
                     className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
                       actionGuideTab === 'capture'
@@ -373,6 +417,17 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                     }`}
                   >
                     Capture IA (/capture)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActionGuideTab('consolidation')}
+                    className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                      actionGuideTab === 'consolidation'
+                        ? 'bg-[#00f2fe] text-[#002022] font-semibold'
+                        : 'text-[#9eb2b8] hover:text-[#e0fdff]'
+                    }`}
+                  >
+                    Consolidation main.js
                   </button>
                   <button
                     type="button"
@@ -509,7 +564,136 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                 </div>
               </div>
 
-              {actionGuideTab === 'capture' ? (
+              {actionGuideTab === 'structuration' ? (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onExportDataPointsJson();
+                        document
+                          .getElementById('gps-json-writer-panel')
+                          ?.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                      className="p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#00f2fe]/45 flex items-center justify-between gap-2 text-left transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-xs font-mono text-[#00f2fe]">
+                          Priorité haute · 1. data_points.json
+                        </div>
+                        <div className="text-[11px] text-[#9eb2b8] break-words">
+                          Persistance GPS (nom, region, lat, lon, note)
+                        </div>
+                      </div>
+                      <FileJson className="w-4 h-4 text-[#00f2fe] shrink-0" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        document
+                          .getElementById('password-generator-panel')
+                          ?.scrollIntoView({ behavior: 'smooth' })
+                      }
+                      className="p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#40dcca]/45 flex items-center justify-between gap-2 text-left transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-xs font-mono text-[#40dcca]">
+                          Priorité haute · 2. genererMotDePasse()
+                        </div>
+                        <div className="text-[11px] text-[#9eb2b8] break-words">
+                          Générateur crypto + snippet Acode / Spck
+                        </div>
+                      </div>
+                      <ShieldCheck className="w-4 h-4 text-[#40dcca] shrink-0" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={onOpenGuideClient}
+                      className="p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 flex items-center justify-between gap-2 text-left transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-xs font-mono text-[#ffba38]">
+                          Priorité moyenne · 3. assets/guide.html
+                        </div>
+                        <div className="text-[11px] text-[#9eb2b8] break-words">
+                          Ouvrir &amp; lier le Guide Client modulaire
+                        </div>
+                      </div>
+                      <BookOpen className="w-4 h-4 text-[#ffba38] shrink-0" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cmd =
+                          '/memoire --note "Structuration MarineVision AI : data_points.json, genererMotDePasse(), assets/guide.html, Android Acode/Spck Editor"';
+                        setCmdInput(cmd);
+                        onExecuteCommand(cmd);
+                      }}
+                      className="p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#40dcca]/45 flex items-center justify-between gap-2 text-left transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-xs font-mono text-[#40dcca]">
+                          Priorité haute · 4. /memoire
+                        </div>
+                        <div className="text-[11px] text-[#9eb2b8] break-words">
+                          Mettre à jour la base visionia_memoire
+                        </div>
+                      </div>
+                      <Database className="w-4 h-4 text-[#40dcca] shrink-0" />
+                    </button>
+                  </div>
+                </div>
+              ) : actionGuideTab === 'access-codes' ? (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      document
+                        .getElementById('access-codes-panel')
+                        ?.scrollIntoView({ behavior: 'smooth' })
+                    }
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#00f2fe]/45 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#00f2fe]">
+                        Priorité haute · 1. genererCodeAcces() &amp; registre access_codes.json
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        Génère un code unique MV-XXXX-XX vérifié côté serveur + message client ({contact.phone})
+                      </div>
+                    </div>
+                    <KeyRound className="w-4 h-4 text-[#00f2fe] shrink-0" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onFocusBento();
+                      window.setTimeout(() => {
+                        document
+                          .getElementById('bento-abonnement-ais')
+                          ?.scrollIntoView({ behavior: 'smooth' });
+                      }, 120);
+                    }}
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#40dcca]/45 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#40dcca]">
+                        Priorité haute · 2. Abonnement &amp; AISStream (Mode Invité → Mode Premium)
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        Champ de saisie MV-XXXX-XX dans la grille Bento · bascule automatique vers Premium
+                      </div>
+                    </div>
+                    <Unlock className="w-4 h-4 text-[#40dcca] shrink-0" />
+                  </button>
+                </div>
+              ) : actionGuideTab === 'capture' ? (
                 <div className="space-y-2">
                   <button
                     type="button"
@@ -550,6 +734,86 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
                     </div>
                     <ShieldCheck className="w-4 h-4 text-[#40dcca] shrink-0" />
                   </button>
+                </div>
+              ) : actionGuideTab === 'consolidation' ? (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      document
+                        .getElementById('capture-ia-panel')
+                        ?.scrollIntoView({ behavior: 'smooth' })
+                    }
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#00f2fe]/45 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#00f2fe]">
+                        Priorité haute · 1. Audit du fichier main.js (Acode / Spck / Node.js)
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        Analyser le code source, assainir les accès locaux et vérifier le schéma GPS
+                      </div>
+                    </div>
+                    <FileCode2 className="w-4 h-4 text-[#00f2fe] shrink-0" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => onToggleAdminMode(!isAdmin)}
+                    className="w-full p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#40dcca]/45 flex items-center justify-between gap-3 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-mono text-[#40dcca]">
+                        Priorité haute · 2. Verrouillage par code administrateur serveur
+                      </div>
+                      <div className="text-xs text-[#9eb2b8] break-words leading-relaxed">
+                        Session Admin active par code vérifié côté serveur (chiffres ou alphanumérique)
+                      </div>
+                    </div>
+                    <Lock className="w-4 h-4 text-[#40dcca] shrink-0" />
+                  </button>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        document
+                          .getElementById('gps-json-writer-panel')
+                          ?.scrollIntoView({ behavior: 'smooth' })
+                      }
+                      className="p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 flex items-center justify-between gap-2 text-left transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-xs font-mono text-[#ffba38]">
+                          Priorité moyenne · 3. Écriture JSON GPS
+                        </div>
+                        <div className="text-[11px] text-[#9eb2b8] break-words">
+                          Formulaire Points GPS (lat/long) → visionia_memoire
+                        </div>
+                      </div>
+                      <MapPinPlus className="w-4 h-4 text-[#ffba38] shrink-0" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        document
+                          .getElementById('capture-ia-panel')
+                          ?.scrollIntoView({ behavior: 'smooth' })
+                      }
+                      className="p-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 flex items-center justify-between gap-2 text-left transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-xs font-mono text-[#00f2fe]">
+                          Priorité moyenne · 4. Complet vs Progressif
+                        </div>
+                        <div className="text-[11px] text-[#9eb2b8] break-words">
+                          Choisir génération complète ou patch main.js
+                        </div>
+                      </div>
+                      <Sliders className="w-4 h-4 text-[#00f2fe] shrink-0" />
+                    </button>
+                  </div>
                 </div>
               ) : actionGuideTab === 'distribution' ? (
                 <div className="space-y-2">
@@ -2311,6 +2575,21 @@ export const AgentMcpView: React.FC<AgentMcpViewProps> = ({
         {/* Right: Capture IA (/capture), PWA Deploy Panel, visionia_optimization.json & Streaming Event Log */}
         <div className="lg:col-span-6 space-y-5">
           <CaptureCodePanel adminToken={adminToken} onNotify={onNotify} onLog={onLog} />
+
+          <AccessCodeManagerPanel
+            adminToken={adminToken}
+            onNotify={onNotify}
+            onLog={onLog}
+          />
+
+          <GpsJsonWriterPanel
+            activeZoneId={config.active_zone_id || 'skikda'}
+            pointsNavigation={config.points_navigation}
+            adminToken={adminToken}
+            onAddManualPoint={onAddManualPoint}
+            onNotify={onNotify}
+            onLog={onLog}
+          />
 
           <PwaDeployPanel
             pwaDeploy={config.pwa_deploy}

@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  BookOpen,
   Bot,
   Camera,
   CheckCircle2,
   Copy,
   Download,
+  ExternalLink,
   KeyRound,
   Lock,
   MapPin,
@@ -54,6 +56,7 @@ import {
   downloadImplScript,
   downloadSampleSkikdaCsv,
   downloadSyncScript,
+  exportDataPointsJson,
   exportLieuxNavigationConfigJson,
   exportMarineToolsConfigJson,
   exportMedPointsInteretJson,
@@ -242,6 +245,7 @@ type ActiveModal =
   | { type: 'profile' }
   | { type: 'admin-unlock' }
   | { type: 'sync-script' }
+  | { type: 'guide' }
   | { type: 'qr-share'; guestMode: boolean };
 
 export default function App() {
@@ -382,6 +386,11 @@ export default function App() {
         name: w.name,
         lat: w.lat,
         long: w.lon,
+        gps: {
+          lat: w.lat,
+          lon: w.lon,
+          datum: 'WGS84',
+        },
         depth: w.depthM,
         type: w.rawType || w.category,
       })),
@@ -575,12 +584,14 @@ export default function App() {
 
   const handleSubmitAdminPin = useCallback(async () => {
     const cleanPin = adminPinInput.trim();
-    if (!/^\d{4,12}$/.test(cleanPin)) {
-      setAdminPinError('Saisissez un code PIN numérique (4 à 12 chiffres).');
+    if (!/^[A-Za-z0-9_-]{4,32}$/.test(cleanPin)) {
+      setAdminPinError(
+        'Saisissez un code administrateur valide (4 à 32 caractères : chiffres, lettres, - ou _).'
+      );
       return;
     }
     if (!adminPinConfigured && cleanPin !== adminPinConfirmInput.trim()) {
-      setAdminPinError('Les deux codes PIN saisis ne correspondent pas.');
+      setAdminPinError('Les deux codes administrateur saisis ne correspondent pas.');
       return;
     }
 
@@ -1254,6 +1265,64 @@ export default function App() {
     [appendLog, showToast]
   );
 
+  const handleVerifyAccessCode = useCallback(
+    async (rawCode: string): Promise<{ ok: boolean; error?: string }> => {
+      const trimmed = rawCode.trim().toUpperCase();
+      if (!trimmed) {
+        return { ok: false, error: 'Saisissez un code au format MV-XXXX-XX.' };
+      }
+      try {
+        const resp = await fetch('/api/access-codes/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: trimmed }),
+        });
+        const payload = (await resp.json()) as {
+          valid?: boolean;
+          code?: string;
+          tier?: SubscriptionTier;
+          error?: string;
+        };
+        if (!resp.ok || !payload.valid || !payload.code || !payload.tier || payload.tier === 'free') {
+          const errMsg = payload.error || 'Code d’accès invalide ou expiré.';
+          appendLog('CODE ACCES', 'Abonnement & AISStream', `Refus : ${trimmed} — ${errMsg}`);
+          return { ok: false, error: errMsg };
+        }
+        const verifiedTier: Exclude<SubscriptionTier, 'free'> = payload.tier;
+        const nextLicense: ManualLicenseRecord = {
+          code: payload.code,
+          tier: verifiedTier,
+          provider: 'Manuel',
+          status: 'active',
+          activatedAt: new Date().toLocaleTimeString('fr-FR', {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          storedIn: 'visionia_memoire',
+        };
+        setManualLicense(nextLicense);
+        setConfig((prev) => ({
+          ...prev,
+          marine_tools_config: {
+            ...prev.marine_tools_config,
+            active_plan: verifiedTier,
+          },
+        }));
+        setIsConfigDirty(true);
+        appendLog(
+          'MODE PREMIUM',
+          'Abonnement & AISStream',
+          `Code ${payload.code} validé → ${getTierLabel(payload.tier)} (AISStream déverrouillé)`
+        );
+        showToast('Mode Premium activé — AISStream déverrouillé');
+        return { ok: true };
+      } catch {
+        return { ok: false, error: 'Serveur de vérification indisponible.' };
+      }
+    },
+    [appendLog, showToast]
+  );
+
   const handleRevokeLicense = useCallback(() => {
     setManualLicense(EMPTY_MANUAL_LICENSE);
     setConfig((prev) => ({
@@ -1291,6 +1360,16 @@ export default function App() {
     );
     showToast('points_interet_mediterranee.json téléchargé');
   }, [pointsInteret, appendLog, showToast]);
+
+  const handleExportDataPointsJson = useCallback(() => {
+    exportDataPointsJson(waypoints, pointsInteret);
+    appendLog(
+      'DATA POINTS',
+      'data_points.json',
+      `${waypoints.length + pointsInteret.length} point(s) exporté(s) (nom, region, lat, lon, note)`
+    );
+    showToast('data_points.json téléchargé');
+  }, [waypoints, pointsInteret, appendLog, showToast]);
 
   const handleCapturePoiFromGnrmc = useCallback(() => {
     const parsed = parseGnrmcCoords(telemetry.nmeaSentence);
@@ -1764,6 +1843,17 @@ export default function App() {
 
       if (cmd.startsWith('/export_med_poi')) {
         handleExportMedPoisJson();
+        return;
+      }
+
+      if (cmd.startsWith('/export_data_points') || cmd.startsWith('/data_points')) {
+        handleExportDataPointsJson();
+        return;
+      }
+
+      if (cmd.startsWith('/guide')) {
+        setModal({ type: 'guide' });
+        appendLog('GUIDE CLIENT', '/assets/guide.html', 'Guide client modulaire ouvert');
         return;
       }
 
@@ -2251,6 +2341,8 @@ export default function App() {
             }
             onExportSetupJson={handleExportSetupMarineGpsJson}
             onSelectPlan={handleSelectPlan}
+            onVerifyAccessCode={handleVerifyAccessCode}
+            onOpenGuideClient={() => setModal({ type: 'guide' })}
             onNotify={showToast}
             onExport={handleExport}
             onNavigateTab={setActiveTab}
@@ -2350,6 +2442,8 @@ export default function App() {
             onExportMarineToolsJson={handleExportMarineToolsJson}
             onExportMedPoisJson={handleExportMedPoisJson}
             onExportLieuxNavJson={handleExportLieuxNavJson}
+            onExportDataPointsJson={handleExportDataPointsJson}
+            onOpenGuideClient={() => setModal({ type: 'guide' })}
             onExportPdf={() => handleExport('PDF')}
             onIndexRagDatabase={handleIndexRagDatabase}
             onOpenImplScriptModal={handleOpenImplScriptModal}
@@ -2358,6 +2452,7 @@ export default function App() {
               showToast('Onglet Lieux & Navigation affiché');
             }}
             onOpenManualPoint={handleOpenManualPointModal}
+            onAddManualPoint={handleAddManualPoint}
             onCapturePoiFromGnrmc={handleCapturePoiFromGnrmc}
             onTogglePoiAiAlert={handleTogglePoiAiAlert}
             onActivateLicenseCode={handleActivateLicenseCode}
@@ -2562,13 +2657,15 @@ export default function App() {
                           ? 'Script Sync Auto → donnees_visionia.xlsx'
                           : modal.type === 'qr-share'
                             ? 'Distribuer Marina Visionnaire (QR Code & PWA)'
-                            : modal.type === 'admin-unlock'
-                              ? adminPinConfigured
-                                ? 'Déverrouillage Mode Admin'
-                                : 'Initialiser le Code PIN Admin'
-                              : IS_ADMIN
-                                ? 'Passerelle Méditerranéenne — Paramètres'
-                                : 'Marina Visionnaire — Mode Invité'
+                            : modal.type === 'guide'
+                              ? 'Guide Client — MarineVision AI (/assets/guide.html)'
+                              : modal.type === 'admin-unlock'
+                                ? adminPinConfigured
+                                  ? 'Déverrouillage Mode Admin'
+                                  : 'Initialiser le Code PIN Admin'
+                                : IS_ADMIN
+                                  ? 'Passerelle Méditerranéenne — Paramètres'
+                                  : 'Marina Visionnaire — Mode Invité'
         }
         onClose={() => setModal({ type: 'none' })}
         footer={
@@ -2758,6 +2855,25 @@ export default function App() {
                       ? 'Déverrouiller'
                       : 'Enregistrer & Déverrouiller'}
                 </span>
+              </button>
+            </>
+          ) : modal.type === 'guide' ? (
+            <>
+              <a
+                href="/assets/guide.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3.5 py-2 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#40dcca]/50 text-[#40dcca] text-xs font-semibold flex items-center gap-1.5 mr-auto"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Ouvrir /assets/guide.html</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => setModal({ type: 'none' })}
+                className="px-4 py-2 rounded-lg bg-[#00f2fe] text-[#002022] text-xs font-semibold"
+              >
+                Fermer
               </button>
             </>
           ) : modal.type === 'profile' ? (
@@ -3178,8 +3294,8 @@ export default function App() {
               <Lock className="w-4 h-4 text-[#00f2fe] shrink-0 mt-0.5" />
               <div className="text-[#9eb2b8] leading-relaxed">
                 {adminPinConfigured
-                  ? 'Saisissez le code PIN Administrateur (vérifié côté serveur) pour activer Passerelle Méditerranéenne, Agent MCP et le module Capture IA (/capture).'
-                  : 'Premier déverrouillage détecté : définissez le code PIN Administrateur (4 à 12 chiffres) qui protégera cette session.'}
+                  ? 'Saisissez le code administrateur (vérifié côté serveur) pour activer Passerelle Méditerranéenne, Agent MCP, l’audit main.js et le module Capture IA (/capture).'
+                  : 'Premier déverrouillage détecté : définissez le code administrateur (4 à 32 caractères : chiffres, lettres ou tirets) qui protégera cette session.'}
               </div>
             </div>
 
@@ -3191,12 +3307,12 @@ export default function App() {
 
             <div>
               <label htmlFor="admin-pin-input" className="block text-xs font-medium text-[#e0fdff] mb-1.5">
-                Code PIN Administrateur
+                Code Administrateur
               </label>
               <input
                 id="admin-pin-input"
                 type="password"
-                inputMode="numeric"
+                inputMode="text"
                 autoComplete="one-time-code"
                 autoFocus
                 value={adminPinInput}
@@ -3204,8 +3320,8 @@ export default function App() {
                   setAdminPinInput(e.target.value);
                   setAdminPinError(null);
                 }}
-                placeholder="••••••"
-                className="w-full bg-[#080f18] border border-[#00f2fe]/50 rounded-lg px-3 py-2.5 text-sm font-mono tracking-widest text-[#00f2fe] focus:outline-none focus:border-[#00f2fe]"
+                placeholder="Code PIN ou code d'accès..."
+                className="w-full bg-[#080f18] border border-[#00f2fe]/50 rounded-lg px-3 py-2.5 text-sm font-mono tracking-wider text-[#00f2fe] focus:outline-none focus:border-[#00f2fe]"
               />
             </div>
 
@@ -3215,24 +3331,47 @@ export default function App() {
                   htmlFor="admin-pin-confirm-input"
                   className="block text-xs font-medium text-[#e0fdff] mb-1.5"
                 >
-                  Confirmer le code PIN
+                  Confirmer le code administrateur
                 </label>
                 <input
                   id="admin-pin-confirm-input"
                   type="password"
-                  inputMode="numeric"
+                  inputMode="text"
                   autoComplete="one-time-code"
                   value={adminPinConfirmInput}
                   onChange={(e) => {
                     setAdminPinConfirmInput(e.target.value);
                     setAdminPinError(null);
                   }}
-                  placeholder="••••••"
-                  className="w-full bg-[#080f18] border border-[#3a494b] rounded-lg px-3 py-2.5 text-sm font-mono tracking-widest text-[#e0fdff] focus:outline-none focus:border-[#00f2fe]"
+                  placeholder="Confirmez votre code..."
+                  className="w-full bg-[#080f18] border border-[#3a494b] rounded-lg px-3 py-2.5 text-sm font-mono tracking-wider text-[#e0fdff] focus:outline-none focus:border-[#00f2fe]"
                 />
               </div>
             )}
           </form>
+        )}
+
+        {modal.type === 'guide' && (
+          <div className="space-y-3 text-xs">
+            <div className="p-2.5 rounded-lg bg-[#151c25] border border-[#3a494b]/50 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[#9eb2b8]">
+                Document autonome stocké dans <code className="text-[#40dcca]">public/assets/guide.html</code>
+              </span>
+              <a
+                href="/data_points.json"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-[#00f2fe] hover:underline"
+              >
+                data_points.json ↗
+              </a>
+            </div>
+            <iframe
+              src="/assets/guide.html"
+              title="Guide Client MarineVision AI"
+              className="w-full h-[60vh] rounded-lg border border-[#3a494b]/60 bg-[#080f18]"
+            />
+          </div>
         )}
 
         {modal.type === 'profile' && (
@@ -3284,6 +3423,26 @@ export default function App() {
                 <QrCode className="w-4 h-4" />
                 <span>QR Code de distribution</span>
               </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setModal({ type: 'guide' })}
+                className="py-2.5 px-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#00f2fe]/35 text-[#e0fdff] text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
+              >
+                <BookOpen className="w-4 h-4 text-[#00f2fe]" />
+                <span>Guide Client (/assets/guide.html)</span>
+              </button>
+              <a
+                href="/data_points.json"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="py-2.5 px-3 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#3a494b]/60 text-[#40dcca] text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
+              >
+                <ExternalLink className="w-4 h-4" />
+                <span>Voir data_points.json</span>
+              </a>
             </div>
 
             {IS_ADMIN && (

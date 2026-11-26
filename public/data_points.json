@@ -1,0 +1,85 @@
+{
+  "schema": "marinevision.data_points/v1",
+  "app": "MarineVision AI",
+  "storage": "visionia_memoire",
+  "updated_at": "2026-11-26T19:22:00Z",
+  "points": [
+    {
+      "nom": "Île Srigina",
+      "region": "Golfe de Skikda",
+      "lat": 36.9355,
+      "lon": 6.8902,
+      "note": "Phare et passe nord-ouest, fond rocheux 18-32 m"
+    },
+    {
+      "nom": "Rade de Stora",
+      "region": "Golfe de Skikda",
+      "lat": 36.9061,
+      "lon": 6.8794,
+      "note": "Mouillage abrité par brise d'ouest, sonde 12-28 m"
+    },
+    {
+      "nom": "Cap de Fer",
+      "region": "Golfe de Skikda",
+      "lat": 37.0815,
+      "lon": 7.1720,
+      "note": "Pointe rocheuse, zone de garde geofence recommandée (800 m)"
+    },
+    {
+      "nom": "Port de Skikda",
+      "region": "Golfe de Skikda",
+      "lat": 36.8856,
+      "lon": 6.9125,
+      "note": "Passerelle principale, chenal d'accès et calibration GNSS"
+    },
+    {
+      "nom": "Calanques de Marseille",
+      "region": "Méditerranée Nord-Ouest",
+      "lat": 43.2104,
+      "lon": 5.4468,
+      "note": "Zone côtière protégée, navigation côtière et mouillage réglementé"
+    },
+    {
+      "nom": "Archipel de La Maddalena",
+      "region": "Sardaigne Nord",
+      "lat": 41.2167,
+      "lon": 9.4061,
+      "note": "Passe des Bouches de Bonifacio, courants fréquents"
+    },
+    {
+      "nom": "Îles Lavezzi",
+      "region": "Corse Sud",
+      "lat": 41.3397,
+      "lon": 9.2564,
+      "note": "Écueils granitiques, vigilance AISStream et sonde recommandées"
+    },
+    {
+      "nom": "Cap Bon",
+      "region": "Tunisie Nord-Est",
+      "lat": 37.0789,
+      "lon": 11.0453,
+      "note": "Route hauturière Sicile-Tunisie, trafic commercial dense"
+    },
+    {
+      "nom": "Îles Kornati",
+      "region": "Mer Adriatique",
+      "lat": 43.8056,
+      "lon": 15.3236,
+      "note": "Archipel karstique, chenaux étroits multi-îlots"
+    },
+    {
+      "nom": "Costa Brava",
+      "region": "Catalogne",
+      "lat": 41.8492,
+      "lon": 3.1286,
+      "note": "Côte découpée, abris côtiers et ports de plaisance"
+    },
+    {
+      "nom": "Al Hoceïma",
+      "region": "Mer d'Alboran",
+      "lat": 35.2517,
+      "lon": -3.9372,
+      "note": "Baie abritée méditerranéenne, approches orientales dégagées"
+    }
+  ]
+}

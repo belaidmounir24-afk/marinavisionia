@@ -378,3 +378,71 @@ export function exportNetlifyToml(): void {
   triggerFileDownload(blob, 'netlify.toml');
 }
 
+export interface DataPointPersisted {
+  nom: string;
+  region: string;
+  lat: number;
+  lon: number;
+  note: string;
+}
+
+export function buildDataPointsJsonPayload(
+  waypoints: Waypoint[],
+  pointsInteret: PointInteretMed[] = [],
+  notesByName: Record<string, string> = {}
+) {
+  const seen = new Set<string>();
+  const points: DataPointPersisted[] = [];
+
+  pointsInteret.forEach((p) => {
+    const key = p.nom.trim().toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    points.push({
+      nom: p.nom,
+      region: p.bassin || p.secteur || 'Méditerranée',
+      lat: Number(p.lat.toFixed(4)),
+      lon: Number(p.lon.toFixed(4)),
+      note:
+        notesByName[key] ||
+        `${p.type} · rayon geofence ${p.rayon_m} m (${p.source_nmea || '$GNRMC'})`,
+    });
+  });
+
+  waypoints.forEach((w) => {
+    const key = w.name.trim().toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    points.push({
+      nom: w.name,
+      region: w.zoneId || 'Golfe de Skikda',
+      lat: Number(w.lat.toFixed(4)),
+      lon: Number(w.lon.toFixed(4)),
+      note:
+        notesByName[key] ||
+        `Sonde ${w.depthM} m · ${w.rawType || w.category}${w.isManual ? ' (saisie manuelle)' : ''}`,
+    });
+  });
+
+  return {
+    schema: 'marinevision.data_points/v1',
+    app: 'MarineVision AI',
+    storage: 'visionia_memoire',
+    updated_at: new Date().toISOString(),
+    points,
+  };
+}
+
+export function exportDataPointsJson(
+  waypoints: Waypoint[],
+  pointsInteret: PointInteretMed[] = [],
+  notesByName: Record<string, string> = {}
+): void {
+  const payload = buildDataPointsJsonPayload(waypoints, pointsInteret, notesByName);
+  triggerFileDownload(
+    new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' }),
+    'data_points.json'
+  );
+}
+
+

@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import {
   analyzeAndSplitAdminPoiCode,
+  IntegrationMode,
+  SAMPLE_MAIN_JS_SNIPPET,
   SAMPLE_RAW_CODE_SNIPPET,
   SecurizerResult,
 } from '../utils/codeSecurizer';
@@ -22,7 +24,7 @@ interface CaptureCodePanelProps {
   onLog: (tag: string, source: string, detail: string) => void;
 }
 
-type OutputTab = 'client' | 'protection' | 'admin';
+type OutputTab = 'client' | 'protection' | 'admin' | 'gps';
 
 export const CaptureCodePanel: React.FC<CaptureCodePanelProps> = ({
   adminToken,
@@ -31,6 +33,7 @@ export const CaptureCodePanel: React.FC<CaptureCodePanelProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [rawCode, setRawCode] = useState<string>('');
+  const [integrationMode, setIntegrationMode] = useState<IntegrationMode>('complete');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewMime, setPreviewMime] = useState<string>('image/jpeg');
   const [previewBase64, setPreviewBase64] = useState<string | null>(null);
@@ -94,14 +97,14 @@ export const CaptureCodePanel: React.FC<CaptureCodePanelProps> = ({
       }
 
       setRawCode(payload.code);
-      const split = analyzeAndSplitAdminPoiCode(payload.code);
+      const split = analyzeAndSplitAdminPoiCode(payload.code, integrationMode);
       setResult(split);
       onLog(
         'CAPTURE OCR',
         '/capture',
-        `Code transcrit par OCR (${payload.code.length} car.) + séparation Client/Admin générée`
+        `Code transcrit par OCR (${payload.code.length} car.) + audit main.js (${integrationMode})`
       );
-      onNotify('Code extrait par OCR et préparé pour séparation Client / Admin');
+      onNotify('Code extrait par OCR et audité');
     } catch {
       setOcrError('Erreur réseau lors de la communication avec /api/capture-ocr.');
     } finally {
@@ -109,37 +112,54 @@ export const CaptureCodePanel: React.FC<CaptureCodePanelProps> = ({
     }
   };
 
-  const handleAnalyzeAndSplit = () => {
+  const handleAnalyzeAndSplit = (modeOverride?: IntegrationMode) => {
+    const targetMode = modeOverride || integrationMode;
     if (!rawCode.trim()) {
-      setOcrError('Collez votre code source ou capturez une photo avant de lancer le traitement.');
+      setOcrError('Collez votre code (main.js / HTML) ou capturez une photo avant de lancer l’audit.');
       return;
     }
     setOcrError(null);
-    const split = analyzeAndSplitAdminPoiCode(rawCode);
+    const split = analyzeAndSplitAdminPoiCode(rawCode, targetMode);
     setResult(split);
     onLog(
-      'CAPTURE IA',
+      'AUDIT MAIN.JS',
       '/capture',
-      `Nettoyage + protection 5 clics/PIN serveur + séparation modulaire (${split.findings.length} contrôles)`
+      `Audit source (${targetMode === 'complete' ? 'génération complète' : 'intégration progressive'}) · ${split.findings.length} contrôles`
     );
-    onNotify('Code nettoyé, protégé (5 clics + PIN) et séparé en 3 modules');
+    onNotify(
+      targetMode === 'complete'
+        ? 'Audit terminé : 4 modules complets générés'
+        : 'Audit terminé : patchs d’intégration progressive générés'
+    );
   };
 
-  const activeContent =
-    !result
-      ? ''
-      : outputTab === 'client'
-        ? result.clientHtml
-        : outputTab === 'protection'
-          ? result.protectionScript
-          : result.adminPoiScript;
+  const activeContent = !result
+    ? ''
+    : outputTab === 'client'
+      ? result.clientHtml
+      : outputTab === 'protection'
+        ? result.protectionScript
+        : outputTab === 'admin'
+          ? result.adminPoiScript
+          : result.gpsJsonWriterScript;
 
+  const isProgressive = (result?.mode || integrationMode) === 'progressive';
   const activeFileName =
     outputTab === 'client'
-      ? 'client-guest.html'
+      ? isProgressive
+        ? 'patch-01-nettoyage-main.js'
+        : 'client-guest.html'
       : outputTab === 'protection'
-        ? 'admin-gate-security.js'
-        : 'admin-poi-module.js';
+        ? isProgressive
+          ? 'patch-02-admin-gate.js'
+          : 'admin-gate-security.js'
+        : outputTab === 'admin'
+          ? isProgressive
+            ? 'patch-02b-admin-poi-guard.js'
+            : 'admin-poi-module.js'
+          : isProgressive
+            ? 'patch-03-gps-json.js'
+            : 'visionia-gps-writer.js';
 
   const handleDownloadActiveFile = () => {
     if (!activeContent) return;
@@ -164,27 +184,26 @@ export const CaptureCodePanel: React.FC<CaptureCodePanelProps> = ({
         <div className="flex items-center gap-2">
           <Camera className="w-4 h-4 text-[#00f2fe]" />
           <h3 className="text-base font-semibold text-[#e0fdff]">
-            Module Capture IA (<code className="text-[#40dcca]">/capture</code>) · Sécurisation Admin
+            Audit <code className="text-[#40dcca]">main.js</code> &amp; Capture IA (<code className="text-[#40dcca]">/capture</code>)
           </h3>
         </div>
         <span className="text-[11px] font-mono text-[#40dcca]">
-          OCR Photo · Nettoyage · 5 clics + PIN serveur
+          Acode · Spck · Node.js · OCR Photo
         </span>
       </div>
 
       <p className="text-xs text-[#9eb2b8] leading-relaxed">
-        Transmettez votre code contenant le bouton{' '}
-        <code className="text-[#e0fdff]">Activer Mode Admin</code> et le{' '}
-        <code className="text-[#e0fdff]">&lt;script&gt;</code> de gestion des points (POI) par
-        photo OCR ou copier-coller pour nettoyer les expositions, injecter le déverrouillage 5 clics +
-        PIN serveur et séparer les modules Client / Admin.
+        Auditez votre fichier <code className="text-[#e0fdff]">main.js</code> (Acode, Spck, Node.js)
+        ou capturez une photo de code par OCR pour intégrer le verrouillage par code administrateur,
+        la validation JSON GPS (<code className="text-[#e0fdff]">lat/long</code>) et la séparation
+        Client / Admin.
       </p>
 
       {/* Photo Upload / Camera OCR */}
       <div className="p-3.5 rounded-lg bg-[#080f18] border border-[#3a494b]/60 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs font-medium text-[#e0fdff]">
-            1. Transmission par photo (OCR serveur)
+            1. Capture photo / screenshot (OCR serveur)
           </span>
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -201,7 +220,7 @@ export const CaptureCodePanel: React.FC<CaptureCodePanelProps> = ({
               className="px-3 py-1.5 rounded-lg bg-[#19202a] hover:bg-[#232a34] border border-[#40dcca]/50 text-xs font-medium text-[#40dcca] flex items-center gap-1.5"
             >
               <Upload className="w-3.5 h-3.5" />
-              <span>Photo / Caméra</span>
+              <span>Photo / Fichier</span>
             </button>
             <button
               type="button"
@@ -234,22 +253,34 @@ export const CaptureCodePanel: React.FC<CaptureCodePanelProps> = ({
         )}
       </div>
 
-      {/* Direct Raw Code Paste */}
-      <div className="space-y-2">
+      {/* Direct Raw Code Paste + Choice of Strategy */}
+      <div className="space-y-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <label htmlFor="capture-raw-code" className="text-xs font-medium text-[#e0fdff]">
-            2. Copier-coller direct du code source (&lt;button&gt; Admin + &lt;script&gt; POI)
+            2. Coller <code className="text-[#00f2fe]">main.js</code> ou code HTML/JS
           </label>
-          <button
-            type="button"
-            onClick={() => {
-              setRawCode(SAMPLE_RAW_CODE_SNIPPET);
-              setOcrError(null);
-            }}
-            className="text-[11px] font-mono text-[#00f2fe] hover:underline"
-          >
-            Charger un exemple à nettoyer
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setRawCode(SAMPLE_MAIN_JS_SNIPPET);
+                setOcrError(null);
+              }}
+              className="text-[11px] font-mono text-[#40dcca] hover:underline"
+            >
+              Exemple main.js (Node/Acode)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setRawCode(SAMPLE_RAW_CODE_SNIPPET);
+                setOcrError(null);
+              }}
+              className="text-[11px] font-mono text-[#00f2fe] hover:underline"
+            >
+              Exemple HTML + POI
+            </button>
+          </div>
         </div>
 
         <textarea
@@ -257,9 +288,46 @@ export const CaptureCodePanel: React.FC<CaptureCodePanelProps> = ({
           rows={7}
           value={rawCode}
           onChange={(e) => setRawCode(e.target.value)}
-          placeholder="Collez ici votre code HTML/JS (<button> Activer Mode Admin et <script> de gestion des points POI)..."
+          placeholder="Collez ici le contenu de main.js (Acode / Spck / Node.js) ou votre extrait HTML + <script> POI..."
           className="w-full bg-[#080f18] border border-[#3a494b] rounded-lg p-3 text-xs font-mono text-[#dce3f0] placeholder-[#849495] focus:outline-none focus:border-[#00f2fe]"
         />
+
+        {/* Choice: Full code generation vs progressive integration */}
+        <div className="p-2.5 rounded-lg bg-[#080f18] border border-[#3a494b]/60 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-[11px] font-medium text-[#9eb2b8]">
+            Stratégie de sortie :
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setIntegrationMode('complete');
+                if (rawCode.trim()) handleAnalyzeAndSplit('complete');
+              }}
+              className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
+                integrationMode === 'complete'
+                  ? 'bg-[#00f2fe] text-[#002022] font-bold'
+                  : 'bg-[#19202a] text-[#9eb2b8] hover:text-[#e0fdff]'
+              }`}
+            >
+              Génération complète
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIntegrationMode('progressive');
+                if (rawCode.trim()) handleAnalyzeAndSplit('progressive');
+              }}
+              className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
+                integrationMode === 'progressive'
+                  ? 'bg-[#40dcca] text-[#002022] font-bold'
+                  : 'bg-[#19202a] text-[#9eb2b8] hover:text-[#e0fdff]'
+              }`}
+            >
+              Intégration progressive (patch main.js)
+            </button>
+          </div>
+        </div>
 
         {ocrError && (
           <div className="p-2.5 rounded-lg bg-[#93000a]/30 border border-[#ffb4ab]/40 text-xs text-[#ffb4ab]">
@@ -269,11 +337,13 @@ export const CaptureCodePanel: React.FC<CaptureCodePanelProps> = ({
 
         <button
           type="button"
-          onClick={handleAnalyzeAndSplit}
+          onClick={() => handleAnalyzeAndSplit()}
           className="w-full py-2.5 px-4 rounded-lg bg-[#40dcca] hover:bg-[#6ff6ff] text-[#002022] text-xs font-bold flex items-center justify-center gap-2 transition-colors"
         >
           <ShieldCheck className="w-4 h-4" />
-          <span>Nettoyer, Injecter (5 clics + PIN serveur) &amp; Séparer Client / Admin</span>
+          <span>
+            Auditer main.js, Verrouiller (Code Admin serveur) &amp; Générer ({integrationMode === 'complete' ? 'Complet' : 'Progressif'})
+          </span>
         </button>
       </div>
 
@@ -295,7 +365,7 @@ export const CaptureCodePanel: React.FC<CaptureCodePanelProps> = ({
             ))}
           </div>
 
-          {/* 3 Separated Modules */}
+          {/* 4 Separated Modules */}
           <div className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap gap-1 bg-[#080f18] p-1 rounded-lg border border-[#3a494b]/60">
@@ -308,7 +378,7 @@ export const CaptureCodePanel: React.FC<CaptureCodePanelProps> = ({
                       : 'text-[#9eb2b8] hover:text-[#e0fdff]'
                   }`}
                 >
-                  1. Client / Invité (.html)
+                  {isProgressive ? '1. Patch main.js' : '1. Client / Invité'}
                 </button>
                 <button
                   type="button"
@@ -319,7 +389,7 @@ export const CaptureCodePanel: React.FC<CaptureCodePanelProps> = ({
                       : 'text-[#9eb2b8] hover:text-[#e0fdff]'
                   }`}
                 >
-                  2. Protection 5 clics + PIN (.js)
+                  2. Verrouillage Admin
                 </button>
                 <button
                   type="button"
@@ -330,7 +400,18 @@ export const CaptureCodePanel: React.FC<CaptureCodePanelProps> = ({
                       : 'text-[#9eb2b8] hover:text-[#e0fdff]'
                   }`}
                 >
-                  3. Module Admin POI (.js)
+                  3. Module Admin POI
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOutputTab('gps')}
+                  className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
+                    outputTab === 'gps'
+                      ? 'bg-[#e0fdff] text-[#002022] font-bold'
+                      : 'text-[#9eb2b8] hover:text-[#e0fdff]'
+                  }`}
+                >
+                  4. JSON GPS (lat/long)
                 </button>
               </div>
 

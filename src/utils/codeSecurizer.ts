@@ -1,3 +1,5 @@
+export type IntegrationMode = 'complete' | 'progressive';
+
 export interface CodeAuditFinding {
   id: string;
   label: string;
@@ -6,15 +8,19 @@ export interface CodeAuditFinding {
 }
 
 export interface SecurizerResult {
+  mode: IntegrationMode;
+  isMainJs: boolean;
   hasAdminButton: boolean;
   hasPoiScript: boolean;
+  hasNodeFs: boolean;
   findings: CodeAuditFinding[];
   clientHtml: string;
   protectionScript: string;
   adminPoiScript: string;
+  gpsJsonWriterScript: string;
 }
 
-export const SAMPLE_RAW_CODE_SNIPPET = `<!-- Extrait HTML / JS à sécuriser et séparer -->
+export const SAMPLE_RAW_CODE_SNIPPET = `<!-- Extrait HTML / JS (Spck / Navigateur) à sécuriser et séparer -->
 <header class="marina-bar">
   <span id="brand-logo">Marina Visionnaire</span>
   <button id="btn-admin" onclick="activerModeAdmin()">Activer Mode Admin</button>
@@ -45,7 +51,30 @@ export const SAMPLE_RAW_CODE_SNIPPET = `<!-- Extrait HTML / JS à sécuriser et 
   }
 </script>`;
 
-function extractScriptBlocks(raw: string): { htmlWithoutScripts: string; scriptsCombined: string } {
+export const SAMPLE_MAIN_JS_SNIPPET = `// main.js — Ébauche Node.js / Acode / Spck à auditer et consolider
+import fs from 'node:fs';
+
+const MEMOIRE_PATH = './visionia_memoire.json';
+
+function verifierAdminLocal() {
+  return typeof localStorage !== 'undefined' && localStorage.getItem('IS_ADMIN') === 'true';
+}
+
+function ajouterPointGps(nom, lat, long) {
+  const data = fs.existsSync(MEMOIRE_PATH)
+    ? JSON.parse(fs.readFileSync(MEMOIRE_PATH, 'utf8'))
+    : { points_gps: [] };
+  data.points_gps.push({ nom, lat, long });
+  fs.writeFileSync(MEMOIRE_PATH, JSON.stringify(data, null, 2));
+}
+
+export { verifierAdminLocal, ajouterPointGps };`;
+
+function extractScriptBlocks(raw: string): {
+  htmlWithoutScripts: string;
+  scriptsCombined: string;
+  isMainJs: boolean;
+} {
   const scriptRegex = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
   const scripts: string[] = [];
   const htmlWithoutScripts = raw.replace(scriptRegex, (_match, body: string) => {
@@ -54,16 +83,22 @@ function extractScriptBlocks(raw: string): { htmlWithoutScripts: string; scripts
     return '';
   });
 
-  if (scripts.length === 0 && !/<[a-z][\s\S]*>/i.test(raw)) {
+  const looksLikeJsOnly =
+    scripts.length === 0 && !/<(?:html|head|body|header|section|button|div|span)\b/i.test(raw);
+
+  if (looksLikeJsOnly) {
     return {
-      htmlWithoutScripts: '<header class="marina-bar">\n  <span id="brand-logo">Marina Visionnaire</span>\n</header>\n<section id="poi-list"></section>',
+      htmlWithoutScripts:
+        '<header class="marina-bar">\n  <span id="brand-logo" data-marina-brand="true">Marina Visionnaire</span>\n</header>\n<section id="poi-list"></section>',
       scriptsCombined: raw.trim(),
+      isMainJs: true,
     };
   }
 
   return {
     htmlWithoutScripts: htmlWithoutScripts.trim(),
     scriptsCombined: scripts.join('\n\n').trim(),
+    isMainJs: false,
   };
 }
 
@@ -77,7 +112,6 @@ function stripExposedAdminButtons(html: string): { cleanedHtml: string; removedC
     return '<!-- Bouton Admin retiré du DOM Invité (déverrouillage discret par 5 clics) -->';
   });
 
-  // Add discreet 5-click hook attribute on brand element if not already present
   if (!/data-marina-brand/i.test(cleanedHtml)) {
     if (/<(span|div|a|h1|button)\b[^>]*(?:brand|logo|marina)[^>]*>/i.test(cleanedHtml)) {
       cleanedHtml = cleanedHtml.replace(
@@ -104,30 +138,30 @@ function sanitizeClientAndPoiScript(rawScript: string): {
 
   let script = rawScript;
 
-  // Remove hardcoded numeric PIN comparisons or assignments
+  // Remove hardcoded numeric or alphanumeric admin codes (e.g. PREFIX-2026-XX or numeric PINs)
   script = script.replace(
-    /\b(?:const|let|var)?\s*(?:pin|admin_?pin|passcode|code_?secret)\s*[:=]{1,3}\s*['"`]\d{4,12}['"`]\s*;?/gi,
+    /\b(?:const|let|var)?\s*(?:pin|admin_?pin|admin_?code|access_?code|passcode|code_?secret|secret)\s*[:=]{1,3}\s*['"`][A-Za-z0-9_-]{4,32}['"`]\s*;?/gi,
     () => {
       removedInlineAuthCount += 1;
-      return '// Vérification PIN déplacée exclusivement côté serveur (/api/admin/unlock)';
+      return '// Code administrateur déplacé exclusivement côté serveur (process.env.ADMIN_PIN + /api/admin/unlock)';
     }
   );
 
-  // Remove localStorage / sessionStorage IS_ADMIN mutations
+  // Remove localStorage / sessionStorage IS_ADMIN mutations or checks
   script = script.replace(
-    /(?:localStorage|sessionStorage)\.(?:setItem|getItem)\s*\(\s*['"`][^'"`]*admin[^'"`]*['"`][^)]*\)\s*;?/gi,
+    /(?:localStorage|sessionStorage)\.(?:setItem|getItem)\s*\(\s*['"`][^'"`]*admin[^'"`]*['"`][^)]*\)\s*(?:===\s*['"`]true['"`])?\s*;?/gi,
     () => {
       removedInlineAuthCount += 1;
       return 'false /* Session admin gérée uniquement en mémoire après validation serveur */';
     }
   );
 
-  // Remove exposed activerModeAdmin client-side bypass functions
+  // Remove exposed activerModeAdmin / verifierAdminLocal client-side bypass functions
   script = script.replace(
-    /function\s+activerModeAdmin\s*\([^)]*\)\s*\{[\s\S]*?\}/gi,
+    /function\s+(?:activerModeAdmin|verifierAdminLocal)\s*\([^)]*\)\s*\{[\s\S]*?\}/gi,
     () => {
       removedInlineAuthCount += 1;
-      return '// activerModeAdmin() remplacé par le module admin-gate-security.js (5 clics + PIN serveur)';
+      return '// Bypass admin local supprimé : utiliser getAdminToken() / POST /api/admin/unlock';
     }
   );
 
@@ -149,26 +183,98 @@ function sanitizeClientAndPoiScript(rawScript: string): {
   };
 }
 
-export function analyzeAndSplitAdminPoiCode(rawSource: string): SecurizerResult {
+function buildGpsJsonWriterModule(mode: IntegrationMode): string {
+  const headerComment =
+    mode === 'progressive'
+      ? '// patch-03-gps-json.js — Greffe progressive écriture JSON Points GPS (visionia_memoire)'
+      : '// visionia-gps-writer.js — Module complet schéma JSON GPS (lat/long WGS84) pour Node.js & Acode/Spck';
+
+  return `${headerComment}
+export function validateGpsCoordinates(latInput, longInput) {
+  const lat = Number(String(latInput).replace(',', '.'));
+  const lon = Number(String(longInput).replace(',', '.'));
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
+    throw new Error('Latitude invalide : valeur attendue entre -90 et 90.');
+  }
+  if (!Number.isFinite(lon) || lon < -180 || lon > 180) {
+    throw new Error('Longitude invalide : valeur attendue entre -180 et 180.');
+  }
+  return {
+    lat: Number(lat.toFixed(5)),
+    long: Number(lon.toFixed(5)),
+    gps: {
+      lat: Number(lat.toFixed(5)),
+      lon: Number(lon.toFixed(5)),
+      datum: 'WGS84',
+    },
+  };
+}
+
+export function buildGpsPointRecord({ nom, lat, long, zone = 'skikda', type = 'anchor', depth = 24 }) {
+  const coords = validateGpsCoordinates(lat, long);
+  return {
+    id: 'GPS-' + Date.now(),
+    nom: String(nom || 'Point GPS MarineVision').trim(),
+    lat: coords.lat,
+    long: coords.long,
+    gps: coords.gps,
+    zone,
+    type,
+    depth: Number(depth) || 24,
+    created_at: new Date().toISOString(),
+  };
+}
+
+// Écriture JSON atomique côté Node.js (main.js) vers visionia_memoire.json
+export async function appendPointToVisioniaMemoireNode(fsPromises, pathModule, filePath, pointInput, adminToken) {
+  if (!adminToken) {
+    throw new Error('Écriture refusée : jeton administrateur manquant.');
+  }
+  const safePath = pathModule.resolve(process.cwd(), pathModule.basename(filePath || 'visionia_memoire.json'));
+  let store = { schema: 'marinevision.memoire.gps/v2', points_gps: [] };
+  try {
+    const raw = await fsPromises.readFile(safePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (parsed && Array.isArray(parsed.points_gps)) {
+      store = parsed;
+    }
+  } catch {
+    // Création initiale du fichier visionia_memoire.json
+  }
+  const nextPoint = buildGpsPointRecord(pointInput);
+  store.points_gps.unshift(nextPoint);
+  await fsPromises.writeFile(safePath, JSON.stringify(store, null, 2), 'utf8');
+  return nextPoint;
+}`;
+}
+
+export function analyzeAndSplitAdminPoiCode(
+  rawSource: string,
+  mode: IntegrationMode = 'complete'
+): SecurizerResult {
   const source = rawSource.trim();
   const hasAdminButton =
-    /<button\b/i.test(source) || /activer\s*mode\s*admin|is_admin|admin/i.test(source);
+    /<button\b/i.test(source) || /activer\s*mode\s*admin|verifieradmin|is_admin|admin/i.test(source);
   const hasPoiScript =
-    /<script\b/i.test(source) || /poi|pointsinteret|waypoints|lat|lon/i.test(source);
+    /<script\b/i.test(source) || /poi|pointsinteret|points_gps|waypoints|lat|lon/i.test(source);
+  const hasNodeFs = /\b(?:node:fs|require\s*\(\s*['"]fs['"]\)|writeFileSync|readFileSync|express)\b/i.test(
+    source
+  );
+  const hasGpsLatLong = /\blat\b/i.test(source) && /\b(?:lon|long)\b/i.test(source);
 
-  const { htmlWithoutScripts, scriptsCombined } = extractScriptBlocks(source);
+  const { htmlWithoutScripts, scriptsCombined, isMainJs } = extractScriptBlocks(source);
   const { cleanedHtml, removedCount } = stripExposedAdminButtons(htmlWithoutScripts);
   const { cleanedPoiScript, removedInlineAuthCount, sanitizedDomCount } =
     sanitizeClientAndPoiScript(scriptsCombined);
 
   const findings: CodeAuditFinding[] = [
     {
-      id: 'detect-elements',
-      label: 'Éléments analysés',
-      status: hasAdminButton && hasPoiScript ? 'verified' : 'info',
-      detail: `${hasAdminButton ? 'Bouton Mode Admin détecté' : 'Aucun bouton Admin détecté'} · ${
-        hasPoiScript ? 'Script gestion POI détecté' : 'Script POI basique généré'
-      }`,
+      id: 'audit-source',
+      label: isMainJs ? 'Audit main.js (Node.js / Acode / Spck)' : 'Audit HTML + Script POI',
+      status: hasAdminButton || hasPoiScript || isMainJs ? 'verified' : 'info',
+      detail: `${isMainJs ? 'Module JS détecté' : 'Template HTML/JS détecté'} · ${
+        hasNodeFs ? 'Accès fichiers Node.js fs détecté (sécurisation path.basename ajoutée)' : 'Exécution navigateur'
+      } · ${hasGpsLatLong ? 'Champs lat/long détectés' : 'Schéma lat/long WGS84 injecté'}`,
     },
     {
       id: 'dom-guest-clean',
@@ -177,29 +283,39 @@ export function analyzeAndSplitAdminPoiCode(rawSource: string): SecurizerResult 
       detail:
         removedCount > 0
           ? `${removedCount} bouton(s) d'accès Admin supprimé(s) du DOM client et remplacé(s) par l'ancre discrète [data-marina-brand]`
-          : 'Ancre discrète [data-marina-brand] injectée sans exposer de bouton Admin aux invités',
+          : 'Ancre discrète [data-marina-brand] prête sans exposer de contrôle Admin aux invités',
     },
     {
-      id: 'pin-server-gate',
-      label: 'Protection 5 clics + PIN serveur',
+      id: 'admin-code-server',
+      label: 'Verrouillage par code administrateur',
       status: 'cleaned',
       detail:
         removedInlineAuthCount > 0
-          ? `${removedInlineAuthCount} accès local/PIN client supprimé(s) ; vérification migrée vers POST /api/admin/unlock avec jeton en mémoire`
-          : 'Détecteur 5 clics (< 2,5 s) + modale PIN vérifiée côté serveur générés sans secret en clair',
+          ? `${removedInlineAuthCount} vérification(s) locale(s) ou code(s) en clair retiré(s) ; authentification migrée vers POST /api/admin/unlock`
+          : 'Déclencheur 5 clics + vérification code administrateur côté serveur générés sans secret en clair',
     },
     {
-      id: 'dom-safety',
-      label: 'Séparation Client / Admin POI',
+      id: 'strategy-choice',
+      label: mode === 'complete' ? 'Génération complète générée' : 'Intégration progressive générée',
       status: 'verified',
       detail:
         sanitizedDomCount > 0
-          ? `${sanitizedDomCount} écriture(s) DOM ou évaluation(s) convertie(s) en rendu sûr + module Admin isolé`
-          : 'Modules Client (lecture POI), Protection (5 clics + PIN) et Admin POI séparés proprement',
+          ? `${sanitizedDomCount} écriture(s) DOM/eval assainie(s) · sortie formatée en mode ${
+              mode === 'complete' ? 'architecture complète' : 'patch progressif pour main.js'
+            }`
+          : `Architecture prête en mode ${
+              mode === 'complete' ? 'génération complète (4 modules)' : 'intégration progressive (patchs main.js)'
+            }`,
     },
   ];
 
-  const clientHtml = `<!doctype html>
+  const clientHtml =
+    mode === 'progressive'
+      ? `// patch-01-nettoyage-main.js — Étape 1 : Nettoyage progressif de main.js (Acode / Spck / Node.js)
+// Remplacez vos appels directs à localStorage/innerHTML par ces adaptateurs sûrs :
+
+${cleanedPoiScript || '// Collez ici le corps de votre main.js existant pour appliquer le patch'}`
+      : `<!doctype html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
@@ -219,7 +335,11 @@ ${cleanedHtml
 </body>
 </html>`;
 
-  const protectionScript = `// admin-gate-security.js — Déverrouillage discret 5 clics + vérification PIN côté serveur
+  const protectionScript = `${
+    mode === 'progressive'
+      ? '// patch-02-admin-gate.js — Étape 2 : Greffe progressive du verrouillage par code administrateur'
+      : '// admin-gate-security.js — Déverrouillage discret 5 clics + vérification code administrateur serveur'
+  }
 let memoryAdminToken = null;
 let clickCount = 0;
 let clickTimer = null;
@@ -240,7 +360,7 @@ export function lockAdminSession() {
   window.dispatchEvent(new CustomEvent('marina:admin-state', { detail: { unlocked: false } }));
 }
 
-function openPinDialog() {
+function openAdminCodeDialog() {
   if (document.getElementById('marina-pin-dialog')) return;
 
   const overlay = document.createElement('div');
@@ -258,9 +378,8 @@ function openPinDialog() {
 
   const input = document.createElement('input');
   input.type = 'password';
-  input.inputMode = 'numeric';
   input.autocomplete = 'one-time-code';
-  input.placeholder = 'Code PIN Administrateur';
+  input.placeholder = 'Code Administrateur (vérifié serveur)';
   input.style.cssText =
     'width:100%;box-sizing:border-box;padding:10px;border-radius:8px;border:1px solid #3a494b;background:#080f18;color:#00f2fe;margin-bottom:10px;';
 
@@ -294,7 +413,7 @@ function openPinDialog() {
       });
       const data = await resp.json();
       if (!resp.ok || !data.token) {
-        status.textContent = data.error || 'Code PIN refusé';
+        status.textContent = data.error || 'Code administrateur refusé';
         return;
       }
       memoryAdminToken = data.token;
@@ -321,7 +440,7 @@ export function initSecretBrandGate() {
     if (clickTimer) clearTimeout(clickTimer);
     if (clickCount >= CLICK_THRESHOLD) {
       clickCount = 0;
-      openPinDialog();
+      openAdminCodeDialog();
       return;
     }
     clickTimer = setTimeout(() => {
@@ -330,10 +449,17 @@ export function initSecretBrandGate() {
   });
 }
 
-document.addEventListener('DOMContentLoaded', initSecretBrandGate);`;
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', initSecretBrandGate);
+}`;
 
-  const adminPoiScript = `// admin-poi-module.js — Gestion POI isolée (verrouillée tant que le PIN serveur n'est pas validé)
+  const adminPoiScript = `${
+    mode === 'progressive'
+      ? '// patch-02b-admin-poi-guard.js — Garde-fou progressif à importer dans votre main.js'
+      : '// admin-poi-module.js — Gestion POI isolée (verrouillée tant que le code admin serveur n’est pas validé)'
+  }
 import { getAdminToken, isAdminUnlocked } from './admin-gate-security.js';
+import { buildGpsPointRecord } from './visionia-gps-writer.js';
 
 export function guardAdminAction(actionName) {
   if (!isAdminUnlocked() || !getAdminToken()) {
@@ -341,30 +467,40 @@ export function guardAdminAction(actionName) {
   }
 }
 
-window.addEventListener('marina:admin-state', (event) => {
-  const unlocked = Boolean(event.detail && event.detail.unlocked);
-  const adminPanel = document.getElementById('admin-panel');
-  if (adminPanel) {
-    adminPanel.hidden = !unlocked;
-  }
-});
+if (typeof window !== 'undefined') {
+  window.addEventListener('marina:admin-state', (event) => {
+    const unlocked = Boolean(event.detail && event.detail.unlocked);
+    const adminPanel = document.getElementById('admin-panel');
+    if (adminPanel) {
+      adminPanel.hidden = !unlocked;
+    }
+  });
+}
 
-// --- Code POI nettoyé et isolé côté Admin ---
+// --- Logique POI / main.js auditée et protégée ---
 ${
   cleanedPoiScript ||
   `const pointsInteret = [];
-export function ajouterPointInteret(nom, lat, lon) {
+export function ajouterPointInteret(nom, lat, long) {
   guardAdminAction('ajouterPointInteret');
-  pointsInteret.push({ nom, lat: Number(lat), lon: Number(lon) });
+  const point = buildGpsPointRecord({ nom, lat, long });
+  pointsInteret.push(point);
+  return point;
 }`
 }`;
 
+  const gpsJsonWriterScript = buildGpsJsonWriterModule(mode);
+
   return {
+    mode,
+    isMainJs,
     hasAdminButton,
     hasPoiScript,
+    hasNodeFs,
     findings,
     clientHtml,
     protectionScript,
     adminPoiScript,
+    gpsJsonWriterScript,
   };
 }

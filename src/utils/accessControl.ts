@@ -171,3 +171,143 @@ export function getTierLabel(tier: SubscriptionTier): string {
       return 'Gratuit (Free)';
   }
 }
+
+export interface TemporaryAccessCodeRecord {
+  code: string;
+  tier: Exclude<SubscriptionTier, 'free'>;
+  createdAt: string;
+  expiresAt: string;
+  usedAt: string | null;
+  status: 'active' | 'used' | 'expired';
+}
+
+const ACCESS_CODE_ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+export function genererCodeAcces(): string {
+  const bytes = new Uint8Array(6);
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i += 1) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  const numVal = ((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]) >>> 0;
+  const digits = String(numVal % 10000).padStart(4, '0');
+  const c1 = ACCESS_CODE_ALPHA[bytes[4] % ACCESS_CODE_ALPHA.length];
+  const c2 = ACCESS_CODE_ALPHA[bytes[5] % ACCESS_CODE_ALPHA.length];
+  return `MV-${digits}-${c1}${c2}`;
+}
+
+export function buildClientOnboardingMessage(
+  code: string,
+  tier: Exclude<SubscriptionTier, 'free'>,
+  expiresAtIso: string
+): string {
+  const expDate = new Date(expiresAtIso).toLocaleDateString('fr-FR');
+  return [
+    `Bonjour, voici votre code d'accès temporaire Marina Visionnaire (${getTierLabel(tier)}) :`,
+    `Code : ${code}`,
+    `Validité : jusqu'au ${expDate}`,
+    `Pour passer du Mode Invité au Mode Premium (AISStream & Alertes IA débloqués), ouvrez l'app puis saisissez ce code dans la section « Abonnement & AISStream » du tableau Bento.`,
+    `Assistance : ${PROJECT_CONTACT.phone} · ${PROJECT_CONTACT.email}`,
+  ].join('\n');
+}
+
+export interface PasswordGeneratorOptions {
+  avecSymboles?: boolean;
+  avecMajuscules?: boolean;
+  avecChiffres?: boolean;
+}
+
+const PWD_LOWER = 'abcdefghijkmnopqrstuvwxyz';
+const PWD_UPPER = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+const PWD_DIGITS = '23456789';
+const PWD_SYMBOLS = '!@#$%&*-_+=';
+
+function randomIndex(max: number): number {
+  if (max <= 1) return 0;
+  if (typeof globalThis !== 'undefined' && globalThis.crypto?.getRandomValues) {
+    const limit = Math.floor(0x100000000 / max) * max;
+    const buf = new Uint32Array(1);
+    let val = 0;
+    do {
+      globalThis.crypto.getRandomValues(buf);
+      val = buf[0];
+    } while (val >= limit);
+    return val % max;
+  }
+  return Math.floor(Math.random() * max);
+}
+
+export function genererMotDePasse(
+  longueur = 14,
+  options: PasswordGeneratorOptions = {}
+): string {
+  const len = Math.max(8, Math.min(64, Math.round(longueur)));
+  const useUpper = options.avecMajuscules !== false;
+  const useDigits = options.avecChiffres !== false;
+  const useSymbols = options.avecSymboles !== false;
+
+  const pools = [PWD_LOWER];
+  if (useUpper) pools.push(PWD_UPPER);
+  if (useDigits) pools.push(PWD_DIGITS);
+  if (useSymbols) pools.push(PWD_SYMBOLS);
+
+  const combined = pools.join('');
+  const chars: string[] = [];
+
+  for (const pool of pools) {
+    if (chars.length < len) {
+      chars.push(pool[randomIndex(pool.length)]);
+    }
+  }
+  while (chars.length < len) {
+    chars.push(combined[randomIndex(combined.length)]);
+  }
+
+  for (let i = chars.length - 1; i > 0; i -= 1) {
+    const j = randomIndex(i + 1);
+    const tmp = chars[i];
+    chars[i] = chars[j];
+    chars[j] = tmp;
+  }
+
+  return chars.join('');
+}
+
+export function buildAndroidModularSnippet(): string {
+  return [
+    '// Module JavaScript MarineVision AI (compatible Android · Acode / Spck Editor)',
+    'function genererMotDePasse(longueur = 14, avecSymboles = true) {',
+    '  const pools = [',
+    "    'abcdefghijkmnopqrstuvwxyz',",
+    "    'ABCDEFGHJKLMNPQRSTUVWXYZ',",
+    "    '23456789',",
+    "    ...(avecSymboles ? ['!@#$%&*-_+='] : []),",
+    '  ];',
+    "  const tout = pools.join('');",
+    '  const rnd = (n) => {',
+    '    const b = new Uint32Array(1);',
+    '    crypto.getRandomValues(b);',
+    '    return b[0] % n;',
+    '  };',
+    '  const chars = pools.map((p) => p[rnd(p.length)]);',
+    '  while (chars.length < longueur) chars.push(tout[rnd(tout.length)]);',
+    '  for (let i = chars.length - 1; i > 0; i--) {',
+    '    const j = rnd(i + 1);',
+    '    [chars[i], chars[j]] = [chars[j], chars[i]];',
+    '  }',
+    "  return chars.join('');",
+    '}',
+    '',
+    '// Lecture modulaire des points GPS depuis data_points.json',
+    'async function chargerPointsGPS() {',
+    "  const res = await fetch('./data_points.json');",
+    '  const data = await res.json();',
+    '  return data.points || [];',
+    '}',
+  ].join('\n');
+}
+
+

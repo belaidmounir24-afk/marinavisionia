@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   BatteryCharging,
+  BookOpen,
   Bot,
   Code2,
   Compass,
@@ -8,6 +9,8 @@ import {
   EyeOff,
   FileSpreadsheet,
   FileText,
+  KeyRound,
+  Lock,
   MapPin,
   Navigation,
   Play,
@@ -15,7 +18,10 @@ import {
   Radar,
   Satellite,
   Share2,
+  ShieldCheck,
+  Unlock,
 } from 'lucide-react';
+import { getTierLabel, hasAccess, PROJECT_CONTACT } from '../utils/accessControl';
 import {
   MarineGpsTrackerConfig,
   MarineToolsConfig,
@@ -49,6 +55,8 @@ interface BentoDashboardProps {
   onConfigureAutoLog: () => void;
   onExportSetupJson: () => void;
   onSelectPlan: (tier: SubscriptionTier) => void;
+  onVerifyAccessCode: (code: string) => Promise<{ ok: boolean; error?: string }>;
+  onOpenGuideClient: () => void;
   onNotify: (msg: string) => void;
   onExport: (fmt: 'PDF' | 'XLSX' | 'JSON') => void;
   onNavigateTab: (tab: 'carte-sonar' | 'waypoints-nav' | 'agent-mcp-config') => void;
@@ -108,16 +116,23 @@ export const BentoDashboard: React.FC<BentoDashboardProps> = ({
   onConfigureAutoLog,
   onExportSetupJson,
   onSelectPlan,
+  onVerifyAccessCode,
+  onOpenGuideClient,
   onNotify,
   onExport,
   onNavigateTab,
 }) => {
   const [selectedTarget, setSelectedTarget] = useState<RadarBlipTarget>(RADAR_BLIPS[0]);
   const [showTechDetails, setShowTechDetails] = useState(false);
+  const [accessCodeInput, setAccessCodeInput] = useState('');
+  const [accessCodeBusy, setAccessCodeBusy] = useState(false);
+  const [accessCodeError, setAccessCodeError] = useState<string | null>(null);
   const beamRef = useRef<HTMLDivElement | null>(null);
   const angleRef = useRef(0);
 
   const effectiveTech = isAdmin && showTechDetails;
+  const aisUnlocked = hasAccess('ais_stream', toolsConfig);
+  const isPremiumStatus = toolsConfig.active_plan !== 'free';
 
   useEffect(() => {
     let rafId = 0;
@@ -429,6 +444,124 @@ export const BentoDashboard: React.FC<BentoDashboardProps> = ({
                   </span>
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Abonnement & AISStream Activation Card (Bento Grid) */}
+          <div
+            id="bento-abonnement-ais"
+            className="rounded-xl bg-[#151c25] border border-[#40dcca]/40 p-4 space-y-3"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                {isPremiumStatus ? (
+                  <ShieldCheck className="w-4 h-4 text-[#40dcca]" />
+                ) : (
+                  <KeyRound className="w-4 h-4 text-[#ffba38]" />
+                )}
+                <h3 className="text-sm font-semibold text-[#e0fdff]">
+                  Abonnement &amp; AISStream
+                </h3>
+              </div>
+              <span
+                className={`text-[11px] font-mono font-semibold flex items-center gap-1 ${
+                  isPremiumStatus ? 'text-[#40dcca]' : 'text-[#ffba38]'
+                }`}
+              >
+                {aisUnlocked ? <Unlock className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
+                <span>
+                  {isPremiumStatus
+                    ? `Mode Premium · ${getTierLabel(toolsConfig.active_plan)}`
+                    : 'Mode Invité (Gratuit)'}
+                </span>
+              </span>
+            </div>
+
+            {isPremiumStatus ? (
+              <div className="p-2.5 rounded-lg bg-[#080f18] border border-[#40dcca]/35 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="text-[#e0fdff]">
+                  Statut actif : <strong className="text-[#40dcca]">Mode Premium</strong> · Flux
+                  AISStream et Alertes IA débloqués
+                </span>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigateTab('agent-mcp-config')}
+                    className="text-[11px] font-mono text-[#00f2fe] hover:underline"
+                  >
+                    Gérer codes
+                  </button>
+                )}
+              </div>
+            ) : (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const clean = accessCodeInput.trim().toUpperCase();
+                  if (!clean) {
+                    setAccessCodeError('Saisissez un code d’accès (format MV-XXXX-XX).');
+                    return;
+                  }
+                  setAccessCodeBusy(true);
+                  setAccessCodeError(null);
+                  void onVerifyAccessCode(clean).then((res) => {
+                    setAccessCodeBusy(false);
+                    if (res.ok) {
+                      setAccessCodeInput('');
+                      setAccessCodeError(null);
+                    } else {
+                      setAccessCodeError(res.error || 'Code d’accès refusé.');
+                    }
+                  });
+                }}
+                className="space-y-2"
+              >
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    aria-label="Code d'accès temporaire Abonnement & AISStream"
+                    value={accessCodeInput}
+                    onChange={(e) => {
+                      setAccessCodeInput(e.target.value.toUpperCase());
+                      setAccessCodeError(null);
+                    }}
+                    placeholder="Code d'accès (MV-XXXX-XX)"
+                    className="flex-1 min-w-0 bg-[#080f18] border border-[#3a494b] rounded-lg px-3 py-2 text-xs font-mono uppercase tracking-wider text-[#00f2fe] placeholder-[#849495] focus:outline-none focus:border-[#00f2fe]"
+                  />
+                  <button
+                    type="submit"
+                    disabled={accessCodeBusy}
+                    className="px-3.5 py-2 rounded-lg bg-[#40dcca] hover:bg-[#6ff6ff] disabled:opacity-50 text-[#002022] text-xs font-bold whitespace-nowrap shrink-0 transition-colors"
+                  >
+                    {accessCodeBusy ? 'Vérif...' : 'Activer'}
+                  </button>
+                </div>
+                {accessCodeError && (
+                  <p className="text-[11px] text-[#ffb4ab]">{accessCodeError}</p>
+                )}
+                <p className="text-[11px] text-[#9eb2b8]">
+                  Besoin d&apos;un accès temporaire AISStream ? Contactez {PROJECT_CONTACT.phone}
+                </p>
+              </form>
+            )}
+
+            <div className="pt-2 border-t border-[#3a494b]/40 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+              <button
+                type="button"
+                onClick={onOpenGuideClient}
+                className="inline-flex items-center gap-1.5 text-[#00f2fe] hover:underline font-medium"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>Ouvrir le Guide Client</span>
+              </button>
+              <a
+                href="/assets/guide.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-[#40dcca] hover:underline"
+              >
+                /assets/guide.html ↗
+              </a>
             </div>
           </div>
 
